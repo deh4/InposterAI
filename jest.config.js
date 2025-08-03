@@ -1,4 +1,4 @@
-module.exports = {
+const config = {
   testEnvironment: 'jsdom',
   setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
   testMatch: [
@@ -18,21 +18,23 @@ module.exports = {
   globals: {
     chrome: {
       runtime: {
-        sendMessage: jest.fn(),
+        sendMessage: () => jest.fn(),
         onMessage: {
-          addListener: jest.fn()
+          addListener: () => jest.fn()
         }
       },
       storage: {
         local: {
-          get: jest.fn(),
-          set: jest.fn()
+          get: () => jest.fn(),
+          set: () => jest.fn()
         }
       },
       tabs: {
-        query: jest.fn(),
-        sendMessage: jest.fn()
+        query: () => jest.fn(),
+        sendMessage: () => jest.fn()
       }
     }
   }
-}; 
+};
+
+module.exports = config; 
