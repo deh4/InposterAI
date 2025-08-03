@@ -24,9 +24,13 @@ function initializeContentAnalyzer() {
     constructor() {
       this.isAnalyzing = false;
       this.lastAnalyzedContent = null;
+      this.selectionTooltip = null;
+      this.selectionTimeout = null;
       this.setupMessageListener();
       this.setupPageObserver();
+      this.setupSelectionHandler();
       this.injectOverlayStyles();
+      this.injectSelectionTooltipStyles();
       
       // Auto-analyze if enabled (disable for now to prevent errors)
       // if (this.shouldAutoAnalyze()) {
@@ -389,6 +393,292 @@ function initializeContentAnalyzer() {
         childList: true,
         subtree: true
       });
+    }
+
+    setupSelectionHandler() {
+      // Handle text selection events
+      document.addEventListener('mouseup', this.handleSelection.bind(this));
+      document.addEventListener('keyup', this.handleSelection.bind(this));
+      document.addEventListener('selectionchange', this.handleSelectionChange.bind(this));
+      
+      // Hide tooltip when clicking elsewhere
+      document.addEventListener('mousedown', (event) => {
+        if (this.selectionTooltip && !this.selectionTooltip.contains(event.target)) {
+          this.hideSelectionTooltip();
+        }
+      });
+      
+      // Hide tooltip on scroll
+      window.addEventListener('scroll', () => {
+        if (this.selectionTooltip) {
+          this.hideSelectionTooltip();
+        }
+      });
+    }
+
+    handleSelection(event) {
+      // Clear any existing timeout
+      if (this.selectionTimeout) {
+        clearTimeout(this.selectionTimeout);
+      }
+      
+      // Add a small delay to ensure selection is finalized
+      this.selectionTimeout = setTimeout(() => {
+        this.checkAndShowTooltip();
+      }, 150);
+    }
+
+    handleSelectionChange() {
+      // Handle selection changes (keyboard navigation, etc.)
+      if (this.selectionTimeout) {
+        clearTimeout(this.selectionTimeout);
+      }
+      
+      this.selectionTimeout = setTimeout(() => {
+        this.checkAndShowTooltip();
+      }, 150);
+    }
+
+    checkAndShowTooltip() {
+      const selection = window.getSelection();
+      const selectedText = selection.toString().trim();
+      
+      // Only show tooltip for meaningful text selections (minimum 20 characters)
+      if (selectedText.length >= 20 && selectedText.length <= 5000) {
+        this.showSelectionTooltip(selection, selectedText);
+      } else {
+        this.hideSelectionTooltip();
+      }
+    }
+
+    showSelectionTooltip(selection, selectedText) {
+      // Hide existing tooltip first
+      this.hideSelectionTooltip();
+      
+      // Get selection position
+      const range = selection.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      
+      // Create tooltip element
+      this.selectionTooltip = document.createElement('div');
+      this.selectionTooltip.className = 'ai-detector-selection-tooltip';
+      this.selectionTooltip.innerHTML = `
+        <div class="tooltip-content">
+          <button class="analyze-btn" title="Quick AI Analysis">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L2 7V10C2 16 6 20.88 11.88 22L12 22L12.12 22C18 20.88 22 16 22 10V7L12 2Z" 
+                    stroke="currentColor" stroke-width="2" fill="none"/>
+              <path d="M9 12L11 14L15 10" stroke="currentColor" stroke-width="2" fill="none"/>
+            </svg>
+            <span>Quick Analyze</span>
+          </button>
+          <div class="word-count">${selectedText.split(/\s+/).length} words</div>
+        </div>
+      `;
+      
+      // Position tooltip above selection
+      const scrollY = window.scrollY || window.pageYOffset;
+      const scrollX = window.scrollX || window.pageXOffset;
+      
+      this.selectionTooltip.style.position = 'absolute';
+      this.selectionTooltip.style.left = `${rect.left + scrollX + (rect.width / 2)}px`;
+      this.selectionTooltip.style.top = `${rect.top + scrollY - 10}px`;
+      this.selectionTooltip.style.zIndex = '10000';
+      
+      // Add event listener for analyze button
+      const analyzeBtn = this.selectionTooltip.querySelector('.analyze-btn');
+      analyzeBtn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.performQuickAnalysis(selectedText);
+      });
+      
+      // Add to page
+      document.body.appendChild(this.selectionTooltip);
+      
+      // Add fade-in animation
+      requestAnimationFrame(() => {
+        this.selectionTooltip.classList.add('show');
+      });
+    }
+
+    hideSelectionTooltip() {
+      if (this.selectionTooltip) {
+        this.selectionTooltip.classList.add('hiding');
+        setTimeout(() => {
+          if (this.selectionTooltip && this.selectionTooltip.parentNode) {
+            this.selectionTooltip.parentNode.removeChild(this.selectionTooltip);
+          }
+          this.selectionTooltip = null;
+        }, 200);
+      }
+    }
+
+    async performQuickAnalysis(selectedText) {
+      const analyzeBtn = this.selectionTooltip?.querySelector('.analyze-btn');
+      if (!analyzeBtn) return;
+      
+      try {
+        // Show loading state
+        analyzeBtn.innerHTML = `
+          <div class="loading-spinner"></div>
+          <span>Analyzing...</span>
+        `;
+        analyzeBtn.disabled = true;
+        
+        // Perform analysis
+        const analysisData = await this.analyzeSelectedText(selectedText);
+        
+        // Hide tooltip and show result
+        this.hideSelectionTooltip();
+        this.showQuickAnalysisResult(analysisData, selectedText);
+        
+      } catch (error) {
+        console.error('Quick analysis failed:', error);
+        
+        // Show error state
+        analyzeBtn.innerHTML = `
+          <span style="color: #dc3545;">⚠️ Error</span>
+        `;
+        
+        setTimeout(() => {
+          this.hideSelectionTooltip();
+        }, 2000);
+      }
+    }
+
+    async analyzeSelectedText(selectedText) {
+      // Create metadata for selected text
+      const metadata = {
+        url: window.location.href,
+        title: document.title,
+        wordCount: selectedText.split(/\s+/).length,
+        source: 'text-selection',
+        language: document.documentElement.lang || 'unknown',
+        domain: window.location.hostname,
+        readingTime: Math.ceil(selectedText.split(/\s+/).length / 200),
+        contentContext: {
+          selectionLength: selectedText.length,
+          isPartialContent: true
+        }
+      };
+      
+      // Send analysis request to background script
+      const response = await chrome.runtime.sendMessage({
+        action: 'analyzeText',
+        text: selectedText,
+        metadata: metadata
+      });
+      
+      if (!response.success) {
+        throw new Error(response.error || 'Analysis failed');
+      }
+      
+      return response.data;
+    }
+
+    showQuickAnalysisResult(analysisData, selectedText) {
+      // Create result overlay
+      const overlay = document.createElement('div');
+      overlay.className = 'ai-detector-quick-result';
+      overlay.innerHTML = `
+        <div class="quick-result-content">
+          <div class="result-header">
+            <h3>Quick Analysis Result</h3>
+            <button class="close-btn" title="Close">&times;</button>
+          </div>
+          <div class="result-body">
+            <div class="likelihood-display">
+              <div class="likelihood-circle ${this.getLikelihoodClass(analysisData.likelihood)}">
+                <span class="likelihood-value">${Math.round(analysisData.likelihood)}%</span>
+                <span class="likelihood-label">AI Generated</span>
+              </div>
+              <div class="confidence-info">
+                Confidence: ${Math.round(analysisData.confidence)}%
+              </div>
+            </div>
+            <div class="analysis-details">
+              <div class="text-preview">
+                <strong>Analyzed text:</strong> "${selectedText.substring(0, 100)}${selectedText.length > 100 ? '...' : ''}"
+              </div>
+              <div class="word-count">
+                <strong>Words analyzed:</strong> ${selectedText.split(/\s+/).length}
+              </div>
+            </div>
+          </div>
+          <div class="result-actions">
+            <button class="btn-secondary feedback-btn">Provide Feedback</button>
+            <button class="btn-primary details-btn">View Details</button>
+          </div>
+        </div>
+      `;
+      
+      // Add event listeners
+      const closeBtn = overlay.querySelector('.close-btn');
+      closeBtn.addEventListener('click', () => {
+        this.hideQuickResult(overlay);
+      });
+      
+      const feedbackBtn = overlay.querySelector('.feedback-btn');
+      feedbackBtn.addEventListener('click', () => {
+        this.showFeedbackForSelection(analysisData);
+        this.hideQuickResult(overlay);
+      });
+      
+      const detailsBtn = overlay.querySelector('.details-btn');
+      detailsBtn.addEventListener('click', () => {
+        this.showDetailedResults(analysisData);
+        this.hideQuickResult(overlay);
+      });
+      
+      // Close on click outside
+      overlay.addEventListener('click', (event) => {
+        if (event.target === overlay) {
+          this.hideQuickResult(overlay);
+        }
+      });
+      
+      // Close on Escape key
+      const escapeHandler = (event) => {
+        if (event.key === 'Escape') {
+          this.hideQuickResult(overlay);
+          document.removeEventListener('keydown', escapeHandler);
+        }
+      };
+      document.addEventListener('keydown', escapeHandler);
+      
+      // Add to page with animation
+      document.body.appendChild(overlay);
+      requestAnimationFrame(() => {
+        overlay.classList.add('show');
+      });
+    }
+
+    hideQuickResult(overlay) {
+      overlay.classList.add('hiding');
+      setTimeout(() => {
+        if (overlay.parentNode) {
+          overlay.parentNode.removeChild(overlay);
+        }
+      }, 300);
+    }
+
+    getLikelihoodClass(likelihood) {
+      if (likelihood >= 80) return 'high-ai';
+      if (likelihood >= 50) return 'medium-ai';
+      if (likelihood >= 20) return 'low-ai';
+      return 'human';
+    }
+
+    showFeedbackForSelection(analysisData) {
+      // This will integrate with existing feedback system
+      console.log('Feedback for selection analysis:', analysisData);
+      // TODO: Integrate with existing feedback UI
+    }
+
+    showDetailedResults(analysisData) {
+      // This will show the detailed analysis overlay
+      this.showAnalysisOverlay(analysisData);
     }
 
     async getSettings() {
@@ -1019,6 +1309,320 @@ function initializeContentAnalyzer() {
         .badge-btn-close:hover {
           background: #fee2e2 !important;
           border-color: #ef4444 !important;
+        }
+      `;
+      
+      document.head.appendChild(style);
+    }
+
+    injectSelectionTooltipStyles() {
+      // Only inject once
+      if (document.getElementById('ai-detector-selection-styles')) {
+        return;
+      }
+
+      const style = document.createElement('style');
+      style.id = 'ai-detector-selection-styles';
+      style.textContent = `
+        /* AI Detector Selection Tooltip Styles */
+        .ai-detector-selection-tooltip {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+          position: absolute !important;
+          z-index: 10000 !important;
+          opacity: 0 !important;
+          transform: translateX(-50%) translateY(-100%) translateY(-8px) !important;
+          transition: opacity 0.2s ease-out, transform 0.2s ease-out !important;
+          pointer-events: none !important;
+        }
+
+        .ai-detector-selection-tooltip.show {
+          opacity: 1 !important;
+          transform: translateX(-50%) translateY(-100%) translateY(-4px) !important;
+          pointer-events: auto !important;
+        }
+
+        .ai-detector-selection-tooltip.hiding {
+          opacity: 0 !important;
+          transform: translateX(-50%) translateY(-100%) translateY(-12px) !important;
+          pointer-events: none !important;
+        }
+
+        .ai-detector-selection-tooltip .tooltip-content {
+          background: #1f2937 !important;
+          border-radius: 8px !important;
+          padding: 8px 12px !important;
+          display: flex !important;
+          align-items: center !important;
+          gap: 8px !important;
+          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2) !important;
+          position: relative !important;
+        }
+
+        .ai-detector-selection-tooltip .tooltip-content::after {
+          content: '' !important;
+          position: absolute !important;
+          top: 100% !important;
+          left: 50% !important;
+          transform: translateX(-50%) !important;
+          width: 0 !important;
+          height: 0 !important;
+          border-left: 6px solid transparent !important;
+          border-right: 6px solid transparent !important;
+          border-top: 6px solid #1f2937 !important;
+        }
+
+        .ai-detector-selection-tooltip .analyze-btn {
+          background: #3b82f6 !important;
+          color: white !important;
+          border: none !important;
+          border-radius: 6px !important;
+          padding: 6px 10px !important;
+          display: flex !important;
+          align-items: center !important;
+          gap: 6px !important;
+          font-size: 12px !important;
+          font-weight: 500 !important;
+          cursor: pointer !important;
+          transition: background-color 0.2s ease !important;
+          white-space: nowrap !important;
+        }
+
+        .ai-detector-selection-tooltip .analyze-btn:hover {
+          background: #2563eb !important;
+        }
+
+        .ai-detector-selection-tooltip .analyze-btn:disabled {
+          background: #6b7280 !important;
+          cursor: not-allowed !important;
+        }
+
+        .ai-detector-selection-tooltip .analyze-btn svg {
+          width: 14px !important;
+          height: 14px !important;
+          flex-shrink: 0 !important;
+        }
+
+        .ai-detector-selection-tooltip .word-count {
+          color: #9ca3af !important;
+          font-size: 11px !important;
+          white-space: nowrap !important;
+        }
+
+        .ai-detector-selection-tooltip .loading-spinner {
+          width: 14px !important;
+          height: 14px !important;
+          border: 2px solid #374151 !important;
+          border-top: 2px solid #ffffff !important;
+          border-radius: 50% !important;
+          animation: ai-detector-spin 1s linear infinite !important;
+        }
+
+        /* Quick Analysis Result Overlay */
+        .ai-detector-quick-result {
+          position: fixed !important;
+          top: 0 !important;
+          left: 0 !important;
+          width: 100% !important;
+          height: 100% !important;
+          background: rgba(0, 0, 0, 0.5) !important;
+          z-index: 10001 !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          opacity: 0 !important;
+          transition: opacity 0.3s ease-out !important;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+        }
+
+        .ai-detector-quick-result.show {
+          opacity: 1 !important;
+        }
+
+        .ai-detector-quick-result.hiding {
+          opacity: 0 !important;
+        }
+
+        .ai-detector-quick-result .quick-result-content {
+          background: white !important;
+          border-radius: 12px !important;
+          box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25) !important;
+          max-width: 480px !important;
+          width: 90% !important;
+          max-height: 80vh !important;
+          overflow: auto !important;
+          transform: scale(0.9) translateY(20px) !important;
+          transition: transform 0.3s ease-out !important;
+        }
+
+        .ai-detector-quick-result.show .quick-result-content {
+          transform: scale(1) translateY(0) !important;
+        }
+
+        .ai-detector-quick-result .result-header {
+          padding: 20px 24px 0 24px !important;
+          display: flex !important;
+          justify-content: space-between !important;
+          align-items: center !important;
+          border-bottom: 1px solid #f3f4f6 !important;
+          margin-bottom: 20px !important;
+        }
+
+        .ai-detector-quick-result .result-header h3 {
+          margin: 0 !important;
+          font-size: 18px !important;
+          font-weight: 600 !important;
+          color: #111827 !important;
+        }
+
+        .ai-detector-quick-result .close-btn {
+          background: none !important;
+          border: none !important;
+          font-size: 24px !important;
+          color: #6b7280 !important;
+          cursor: pointer !important;
+          padding: 0 !important;
+          width: 32px !important;
+          height: 32px !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          border-radius: 6px !important;
+          transition: background-color 0.2s ease !important;
+        }
+
+        .ai-detector-quick-result .close-btn:hover {
+          background: #f3f4f6 !important;
+          color: #374151 !important;
+        }
+
+        .ai-detector-quick-result .result-body {
+          padding: 0 24px !important;
+        }
+
+        .ai-detector-quick-result .likelihood-display {
+          display: flex !important;
+          align-items: center !important;
+          gap: 16px !important;
+          margin-bottom: 20px !important;
+        }
+
+        .ai-detector-quick-result .likelihood-circle {
+          width: 80px !important;
+          height: 80px !important;
+          border-radius: 50% !important;
+          display: flex !important;
+          flex-direction: column !important;
+          align-items: center !important;
+          justify-content: center !important;
+          border: 3px solid !important;
+          flex-shrink: 0 !important;
+        }
+
+        .ai-detector-quick-result .likelihood-circle.high-ai {
+          background: #fee2e2 !important;
+          border-color: #ef4444 !important;
+          color: #dc2626 !important;
+        }
+
+        .ai-detector-quick-result .likelihood-circle.medium-ai {
+          background: #fef3c7 !important;
+          border-color: #f59e0b !important;
+          color: #d97706 !important;
+        }
+
+        .ai-detector-quick-result .likelihood-circle.low-ai {
+          background: #dbeafe !important;
+          border-color: #3b82f6 !important;
+          color: #2563eb !important;
+        }
+
+        .ai-detector-quick-result .likelihood-circle.human {
+          background: #dcfce7 !important;
+          border-color: #22c55e !important;
+          color: #16a34a !important;
+        }
+
+        .ai-detector-quick-result .likelihood-value {
+          font-size: 20px !important;
+          font-weight: 700 !important;
+          line-height: 1 !important;
+        }
+
+        .ai-detector-quick-result .likelihood-label {
+          font-size: 10px !important;
+          font-weight: 500 !important;
+          text-transform: uppercase !important;
+          letter-spacing: 0.5px !important;
+          opacity: 0.8 !important;
+        }
+
+        .ai-detector-quick-result .confidence-info {
+          font-size: 14px !important;
+          color: #6b7280 !important;
+        }
+
+        .ai-detector-quick-result .analysis-details {
+          background: #f9fafb !important;
+          border-radius: 8px !important;
+          padding: 16px !important;
+          margin-bottom: 20px !important;
+        }
+
+        .ai-detector-quick-result .text-preview {
+          font-size: 14px !important;
+          color: #374151 !important;
+          margin-bottom: 8px !important;
+          line-height: 1.5 !important;
+        }
+
+        .ai-detector-quick-result .word-count {
+          font-size: 12px !important;
+          color: #6b7280 !important;
+        }
+
+        .ai-detector-quick-result .result-actions {
+          padding: 20px 24px 24px 24px !important;
+          display: flex !important;
+          gap: 12px !important;
+          justify-content: flex-end !important;
+          border-top: 1px solid #f3f4f6 !important;
+        }
+
+        .ai-detector-quick-result .btn-primary {
+          background: #3b82f6 !important;
+          color: white !important;
+          border: none !important;
+          border-radius: 6px !important;
+          padding: 8px 16px !important;
+          font-size: 14px !important;
+          font-weight: 500 !important;
+          cursor: pointer !important;
+          transition: background-color 0.2s ease !important;
+        }
+
+        .ai-detector-quick-result .btn-primary:hover {
+          background: #2563eb !important;
+        }
+
+        .ai-detector-quick-result .btn-secondary {
+          background: #f9fafb !important;
+          color: #374151 !important;
+          border: 1px solid #d1d5db !important;
+          border-radius: 6px !important;
+          padding: 8px 16px !important;
+          font-size: 14px !important;
+          font-weight: 500 !important;
+          cursor: pointer !important;
+          transition: background-color 0.2s ease !important;
+        }
+
+        .ai-detector-quick-result .btn-secondary:hover {
+          background: #f3f4f6 !important;
+        }
+
+        @keyframes ai-detector-spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
         }
       `;
       
