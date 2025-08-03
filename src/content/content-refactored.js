@@ -65,6 +65,9 @@ function initializeContentAnalyzer() {
           case 'extractContent':
             this.handleExtractContent(sendResponse);
             break;
+          case 'startQuickAnalysis':
+            await this.handleQuickAnalysisRequest(request, sendResponse);
+            break;
           case 'ping':
             sendResponse({ status: 'ready', architecture: 'unified' });
             break;
@@ -74,6 +77,20 @@ function initializeContentAnalyzer() {
         }
       } catch (error) {
         console.error('Message handling error:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+    }
+
+    async handleQuickAnalysisRequest(request, sendResponse) {
+      try {
+        if (request.text) {
+          await this.startQuickAnalysis(request.text);
+          sendResponse({ success: true });
+        } else {
+          sendResponse({ success: false, error: 'No text provided' });
+        }
+      } catch (error) {
+        console.error('Quick analysis request failed:', error);
         sendResponse({ success: false, error: error.message });
       }
     }
