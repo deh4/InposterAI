@@ -429,6 +429,78 @@ export class FeedbackManager {
       .slice(0, 5)
       .map(([reason, count]) => ({ reason, count }));
   }
+
+  async submitFeedback(recordId, feedbackData) {
+    try {
+      // Validate feedback data
+      if (!recordId || !feedbackData) {
+        throw new Error('Invalid feedback data');
+      }
+
+      // Get existing record
+      const records = this.getFeedbackRecords();
+      const recordIndex = records.findIndex(r => r.id === recordId);
+      
+      if (recordIndex === -1) {
+        throw new Error('Feedback record not found');
+      }
+
+      // Update record with feedback
+      const record = records[recordIndex];
+      record.feedback = {
+        ...feedbackData,
+        submittedAt: Date.now()
+      };
+
+      // Save updated records
+      this.storeFeedbackRecords(records);
+
+      // Send to dashboard if available
+      await this.sendFeedbackToDashboard(record);
+
+      console.log('Feedback submitted successfully');
+      return true;
+    } catch (error) {
+      console.error('Failed to submit feedback:', error);
+      throw error;
+    }
+  }
+
+  async sendFeedbackToDashboard(record) {
+    try {
+      const dashboardUrl = 'http://localhost:3000';
+      const feedbackData = {
+        analysisId: record.id,
+        feedbackType: record.feedback?.type || 'simple',
+        rating: record.feedback?.rating,
+        correctedLikelihood: record.feedback?.correctedLikelihood,
+        correctedConfidence: record.feedback?.correctedConfidence,
+        reasonCategory: record.feedback?.reasonCategory,
+        reasonText: record.feedback?.reasonText,
+        userExpertise: record.feedback?.userExpertise || 'beginner',
+        isHelpful: record.feedback?.isHelpful || false,
+        sessionId: record.sessionId
+      };
+
+      const response = await fetch(`${dashboardUrl}/api/feedback`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(feedbackData),
+        mode: 'cors'
+      });
+
+      if (response.ok) {
+        console.log('Successfully sent feedback to dashboard');
+      } else {
+        console.warn('Dashboard feedback recording failed:', response.status);
+      }
+    } catch (error) {
+      // Dashboard server might not be running - that's ok
+      console.debug('Dashboard not available for feedback:', error.message);
+    }
+  }
 }
 
 export default FeedbackManager; 

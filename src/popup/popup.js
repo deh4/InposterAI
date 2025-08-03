@@ -66,7 +66,7 @@ class PopupController {
 
     // Quick action buttons
     document.getElementById('historyButton').addEventListener('click', () => {
-      this.showHistory();
+      this.openAnalyticsDashboard();
     });
 
     document.getElementById('helpButton').addEventListener('click', () => {
@@ -648,6 +648,17 @@ class PopupController {
     ];
     
     return restrictedPatterns.some(pattern => url.startsWith(pattern));
+  }
+
+  openAnalyticsDashboard() {
+    // Open analytics dashboard in new tab
+    chrome.tabs.create({ 
+      url: 'http://localhost:3000',
+      active: true 
+    }).catch(() => {
+      // Fallback: show instructions if can't open tab
+      alert('Please open http://localhost:3000 in your browser to view the analytics dashboard.\n\nMake sure the dashboard server is running with: npm start');
+    });
   }
 }
 

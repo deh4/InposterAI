@@ -10,6 +10,7 @@ class BackgroundService {
     this.ollamaClient = new OllamaClient();
     this.analysisCache = new Map();
     this.cacheTimeout = 30 * 60 * 1000; // 30 minutes
+    this.dashboardUrl = 'http://localhost:3000'; // Dashboard server URL
     this.setupMessageHandlers();
     this.setupContextMenus();
   }
@@ -114,6 +115,13 @@ class BackgroundService {
     
     // Update badge with result
     this.updateBadge(analysis.likelihood);
+
+    // Send to dashboard if available
+    await this.sendToDashboard('analysis', {
+      ...analysis,
+      metadata: options.metadata,
+      sessionId: this.getSessionId()
+    });
 
     return analysis;
   }
@@ -292,6 +300,63 @@ class BackgroundService {
     ];
     
     return articlePatterns.some(pattern => pattern.test(url));
+  }
+
+  async sendToDashboard(type, data) {
+    try {
+      const endpoint = type === 'analysis' ? '/api/analysis' : '/api/feedback';
+      
+      // Enhance data with additional context
+      const enhancedData = {
+        ...data,
+        // Add browser context
+        browserInfo: {
+          userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown',
+          extensionVersion: chrome.runtime.getManifest()?.version || '1.0.0',
+          timestamp: Date.now()
+        },
+        // Add performance context for analysis
+        ...(type === 'analysis' && {
+          performance: {
+            cacheHit: data.fromCache || false,
+            totalAnalysisTime: data.analysisTime || 0,
+            extractionMethod: data.metadata?.source || 'unknown'
+          }
+        })
+      };
+      
+      const response = await fetch(`${this.dashboardUrl}${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(enhancedData),
+        mode: 'cors'
+      });
+
+      if (response.ok) {
+        console.log(`Successfully sent ${type} to dashboard`);
+      } else {
+        console.warn(`Dashboard ${type} recording failed:`, response.status);
+      }
+    } catch (error) {
+      // Dashboard server might not be running - that's ok
+      console.debug(`Dashboard not available for ${type}:`, error.message);
+    }
+  }
+
+  getSessionId() {
+    // Generate or get existing session ID for today
+    const today = new Date().toISOString().split('T')[0];
+    const sessionKey = `session_${today}`;
+    
+    let sessionId = localStorage.getItem(sessionKey);
+    if (!sessionId) {
+      sessionId = `session_${today}_${Math.random().toString(36).substr(2, 9)}`;
+      localStorage.setItem(sessionKey, sessionId);
+    }
+    
+    return sessionId;
   }
 }
 

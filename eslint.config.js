@@ -34,18 +34,5 @@ export default [
       'template-curly-spacing': 'error',
       'object-curly-spacing': ['error', 'always']
     }
-  },
-  {
-    files: ['tests/**/*.js'],
-    languageOptions: {
-      globals: {
-        jest: 'readonly',
-        describe: 'readonly',
-        it: 'readonly',
-        expect: 'readonly',
-        beforeEach: 'readonly',
-        afterEach: 'readonly'
-      }
-    }
   }
 ]; 

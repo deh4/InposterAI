@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InposterAI Analytics Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="dashboard">
+        <!-- Header -->
+        <header class="dashboard-header">
+            <div class="header-content">
+                <div class="logo-section">
+                    <h1>🎯 InposterAI Analytics</h1>
+                    <p class="subtitle">Local AI Content Detection Dashboard</p>
+                </div>
+                <div class="status-section">
+                    <div class="connection-status" id="connectionStatus">
+                        <span class="status-indicator"></span>
+                        <span class="status-text">Connecting...</span>
+                    </div>
+                    <div class="last-updated" id="lastUpdated">
+                        Last updated: --
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Overview Cards -->
+        <section class="overview-section">
+            <div class="overview-cards">
+                <div class="card metric-card">
+                    <div class="card-header">
+                        <h3>📊 Total Analyses</h3>
+                        <span class="metric-trend" id="analysesTrend"></span>
+                    </div>
+                    <div class="metric-value" id="totalAnalyses">--</div>
+                    <div class="metric-subtitle">
+                        <span id="todayAnalyses">--</span> today
+                    </div>
+                </div>
+
+                <div class="card metric-card">
+                    <div class="card-header">
+                        <h3>🤖 AI Detection Rate</h3>
+                        <span class="metric-trend" id="aiTrend"></span>
+                    </div>
+                    <div class="metric-value" id="aiDetectionRate">--%</div>
+                    <div class="metric-subtitle">
+                        <span id="humanDetectionRate">--%</span> human content
+                    </div>
+                </div>
+
+                <div class="card metric-card">
+                    <div class="card-header">
+                        <h3>🎯 Average Confidence</h3>
+                        <span class="metric-trend" id="confidenceTrend"></span>
+                    </div>
+                    <div class="metric-value" id="averageConfidence">--%</div>
+                    <div class="metric-subtitle">
+                        <span id="averageLikelihood">--%</span> avg likelihood
+                    </div>
+                </div>
+
+                <div class="card metric-card">
+                    <div class="card-header">
+                        <h3>👍 Feedback Rate</h3>
+                        <span class="metric-trend" id="feedbackTrend"></span>
+                    </div>
+                    <div class="metric-value" id="feedbackRate">--%</div>
+                    <div class="metric-subtitle">
+                        <span id="positiveFeedback">--%</span> positive
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Charts Section -->
+        <section class="charts-section">
+            <div class="charts-grid">
+                <!-- Analysis Trends Chart -->
+                <div class="card chart-card">
+                    <div class="card-header">
+                        <h3>📈 Analysis Trends</h3>
+                        <div class="chart-controls">
+                            <select id="trendsTimeframe">
+                                <option value="7d">Last 7 days</option>
+                                <option value="14d">Last 14 days</option>
+                                <option value="30d">Last 30 days</option>
+                                <option value="90d">Last 90 days</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="trendsChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Model Performance Chart -->
+                <div class="card chart-card">
+                    <div class="card-header">
+                        <h3>⚡ Model Performance</h3>
+                        <div class="chart-controls">
+                            <button class="btn-small" id="refreshModels">🔄 Refresh</button>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="modelsChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Accuracy Analysis Chart -->
+                <div class="card chart-card">
+                    <div class="card-header">
+                        <h3>🎯 Confidence Calibration</h3>
+                        <div class="chart-info">
+                            <span class="info-tooltip" title="Shows how often your confidence levels match actual accuracy">ℹ️</span>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="accuracyChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Content Insights Chart -->
+                <div class="card chart-card">
+                    <div class="card-header">
+                        <h3>📄 Content Analysis</h3>
+                        <div class="chart-controls">
+                            <select id="contentViewType">
+                                <option value="length">By Content Length</option>
+                                <option value="domain">By Domain</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="contentChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Detailed Analytics Section -->
+        <section class="details-section">
+            <div class="details-grid">
+                <!-- Recent Analyses -->
+                <div class="card list-card">
+                    <div class="card-header">
+                        <h3>🕒 Recent Analyses</h3>
+                        <button class="btn-small" id="exportData">📥 Export</button>
+                    </div>
+                    <div class="list-container">
+                        <div id="recentAnalyses" class="analysis-list">
+                            <div class="loading-state">Loading recent analyses...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- System Health -->
+                <div class="card info-card">
+                    <div class="card-header">
+                        <h3>🔧 System Health</h3>
+                        <span class="status-indicator system-health" id="systemHealth"></span>
+                    </div>
+                    <div class="info-content">
+                        <div class="info-item">
+                            <span class="info-label">Database Size:</span>
+                            <span id="dbSize">--</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Cache Hit Rate:</span>
+                            <span id="cacheHitRate">--%</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Avg Response Time:</span>
+                            <span id="avgResponseTime">--ms</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Active Sessions:</span>
+                            <span id="activeSessions">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="dashboard-footer">
+            <div class="footer-content">
+                <div class="footer-info">
+                    <p>InposterAI Dashboard v1.0.0 • Running locally on port 3000</p>
+                    <p>All data stays on your machine • Privacy-first analytics</p>
+                </div>
+                <div class="footer-actions">
+                    <button class="btn-link" id="openExtension">🔌 Open Extension</button>
+                    <button class="btn-link" id="viewDocs">📚 Documentation</button>
+                    <button class="btn-link" id="reportIssue">🐛 Report Issue</button>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Real-time notification -->
+    <div id="notification" class="notification hidden">
+        <div class="notification-content">
+            <span class="notification-icon">📊</span>
+            <span class="notification-text">New analysis recorded</span>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <script>
+        // Ensure Chart.js is loaded before initializing dashboard
+        if (typeof Chart === 'undefined') {
+            console.error('Chart.js failed to load!');
+        } else {
+            console.log('Chart.js loaded successfully, version:', Chart.version);
+        }
+    </script>
+    <script src="dashboard.js"></script>
+</body>
+</html> 

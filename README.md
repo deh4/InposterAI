@@ -30,6 +30,63 @@ A privacy-focused browser extension that helps users identify AI-generated conte
 - **Smart Anonymization**: Privacy-preserving feedback data collection
 - **Analytics Dashboard**: View feedback statistics and model performance
 
+### 🎯 **Analytics Dashboard**
+- **Local Analytics Server**: Express.js dashboard running on localhost:3000
+- **Real-time Updates**: WebSocket connections for live data updates
+- **Comprehensive Insights**: Model performance, accuracy trends, content analysis
+- **Data Export**: JSON/CSV export for external analysis
+- **Privacy-First**: All analytics data stays on your machine
+
+## 📊 **Data Model & Analytics**
+
+### **Data Points Captured**
+
+#### **🔍 Analysis Data**
+- **Core Metrics**: AI likelihood (0-100%), confidence level, analysis method
+- **Content Metadata**: URL, title, word count, domain, language, reading time
+- **Performance**: Analysis duration, cache hits, extraction method
+- **Statistical Breakdown**: Perplexity, burstiness, vocabulary diversity, AI indicators
+- **LLM Analysis**: Raw model response, reasoning, detected patterns
+- **Browser Context**: Extension version, user agent, timestamp
+
+#### **👍 Feedback Data**
+- **User Ratings**: Thumbs up/down feedback system
+- **Detailed Corrections**: User-corrected AI/human percentages
+- **Error Classification**: False positive/negative categorization
+- **User Expertise**: Beginner/intermediate/expert tracking
+- **Feedback Context**: Reason categories, free-text explanations, helpfulness ratings
+
+#### **📈 Session Tracking**
+- **Session Management**: Daily session IDs, cross-tab consistency
+- **Usage Patterns**: Analysis frequency, content types, domains
+- **Performance Metrics**: Cache efficiency, response times, retry counts
+
+### **Analytics Insights Available**
+
+#### **🎯 Model Performance**
+- **Accuracy Trends**: Track model performance over time
+- **Confidence Calibration**: Compare confidence vs actual accuracy
+- **Error Analysis**: Identify common false positives/negatives
+- **A/B Testing**: Compare different models and settings
+
+#### **📊 Content Analysis**
+- **Domain Insights**: Which websites trigger AI detection most
+- **Content Type Patterns**: Blog vs news vs academic detection rates
+- **Length Correlation**: How content length affects accuracy
+- **Language Detection**: Multilingual content analysis patterns
+
+#### **👤 User Behavior**
+- **Feedback Patterns**: User agreement with AI predictions
+- **Expertise Correlation**: How user expertise affects feedback quality
+- **Usage Analytics**: Peak usage times, most analyzed content types
+- **Feature Adoption**: Which features are used most frequently
+
+#### **⚡ System Performance**
+- **Cache Efficiency**: Hit rates and performance improvements
+- **Response Times**: Analysis speed across different content types
+- **Resource Usage**: Extension performance impact tracking
+- **Error Monitoring**: Failed analyses and connection issues
+
 ### 🔧 **Analysis Methods**
 - **Statistical Analysis**: 
   - Perplexity scoring
@@ -93,12 +150,20 @@ A privacy-focused browser extension that helps users identify AI-generated conte
    npm install
    npm run build
    ```
-
 2. **Load in browser**:
    - Open Opera and go to `opera://extensions`
    - Enable "Developer mode"
    - Click "Load unpacked" and select the `dist` folder
    - Pin the extension for easy access
+
+### Analytics Dashboard (Optional)
+3. **Start analytics dashboard**:
+   ```bash
+   cd dashboard
+   npm install
+   npm start
+   ```
+4. **Access dashboard**: Open http://localhost:3000 in your browser
 
 ## 🛠️ Development
 
@@ -135,6 +200,19 @@ InposterAI/
 │   │   └── feedback-ui.js   # Feedback UI components
 │   ├── assets/              # Icons and static files
 │   └── manifest.json        # Extension manifest
+├── dashboard/               # Analytics dashboard server
+│   ├── server.js           # Express.js server
+│   ├── src/                # Server-side modules
+│   │   ├── analytics-db.js # SQLite database manager
+│   │   └── analytics-processor.js # Data processing
+│   ├── public/             # Dashboard web interface
+│   │   ├── index.html      # Dashboard UI
+│   │   ├── styles.css      # Dashboard styling
+│   │   └── dashboard.js    # Client-side logic
+│   ├── scripts/            # Utility scripts
+│   │   └── populate-dummy-data.js # Generate test data
+│   ├── data/               # Database storage (auto-created)
+│   └── package.json        # Dashboard dependencies
 ├── tests/                   # Test files
 ├── dist/                    # Built extension (auto-generated)
 ├── webpack.config.cjs       # Webpack configuration
@@ -193,6 +271,73 @@ InposterAI/
 3. Select preferred model for analysis
 4. Refresh model list when needed
 
+### Analytics Dashboard
+1. Start the dashboard server: `cd dashboard && npm start`
+2. Open http://localhost:3000 in your browser
+3. View real-time analytics as you use the extension
+4. Export data for external analysis
+5. Monitor model performance and accuracy trends
+
+### Data Model Architecture
+
+The analytics system uses a SQLite database with the following core tables:
+
+#### **Analyses Table**
+```sql
+CREATE TABLE analyses (
+  id TEXT PRIMARY KEY,              -- Unique analysis identifier
+  timestamp INTEGER,               -- Analysis timestamp
+  url TEXT,                        -- Analyzed page URL
+  title TEXT,                      -- Page title
+  content_length INTEGER,          -- Text word count
+  ai_likelihood INTEGER,           -- AI probability (0-100)
+  confidence INTEGER,              -- Model confidence (0-100)
+  model_name TEXT,                 -- AI model used
+  analysis_time INTEGER,           -- Processing time (ms)
+  reasoning TEXT,                  -- LLM explanation
+  statistical_breakdown TEXT,      -- JSON statistical metrics
+  session_id TEXT,                 -- Daily session identifier
+  language TEXT,                   -- Content language
+  domain TEXT,                     -- Website domain
+  reading_time INTEGER,            -- Estimated reading time
+  browser_info TEXT,               -- Browser context JSON
+  performance_info TEXT           -- Performance metrics JSON
+);
+```
+
+#### **Feedback Table**
+```sql
+CREATE TABLE feedback (
+  id TEXT PRIMARY KEY,              -- Unique feedback identifier
+  analysis_id TEXT,                -- Links to analyses table
+  feedback_type TEXT,              -- 'simple' or 'detailed'
+  rating INTEGER,                  -- User rating (-1, 0, 1)
+  corrected_likelihood INTEGER,    -- User correction (0-100)
+  reason_category TEXT,            -- Error classification
+  reason_text TEXT,                -- User explanation
+  user_expertise TEXT,             -- User skill level
+  is_helpful BOOLEAN,              -- Feedback helpfulness
+  timestamp INTEGER,               -- Feedback timestamp
+  session_id TEXT                  -- Session identifier
+);
+```
+
+### Data Flow Process
+
+1. **Content Analysis**: Extension extracts page content and metadata
+2. **AI Processing**: Ollama performs statistical and LLM analysis
+3. **Data Enhancement**: Browser context and performance metrics added
+4. **Dashboard Storage**: SQLite database stores normalized data
+5. **Real-time Analytics**: WebSocket updates provide live insights
+6. **Feedback Loop**: User corrections improve model understanding
+
+### Advanced Analytics
+1. **Confidence Calibration**: Check how often your confidence matches actual accuracy
+2. **Model Comparison**: Compare performance between different Ollama models
+3. **Content Insights**: Analyze detection patterns by content type and domain
+4. **Feedback Analytics**: Track user corrections and improvement opportunities
+5. **Data Export**: Export complete analytics data in JSON or CSV format
+
 ## 🤝 Contributing
 
 We welcome contributions! Please:
@@ -244,6 +389,18 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Check `dist` folder exists (run `npm run build`)
 - Verify all files are present in build output
 - Check browser console for loading errors
+
+**"Analytics dashboard not loading"**
+- Ensure dashboard server is running: `cd dashboard && npm start`
+- Check if port 3000 is available: `lsof -i :3000`
+- Try a different port: `PORT=3001 npm start`
+- Check firewall isn't blocking localhost connections
+
+**"No data in dashboard"**
+- Use the extension to analyze some content first
+- Check browser console for connection errors
+- Verify extension can reach localhost:3000
+- Restart both extension and dashboard server
 
 ### Performance Tips
 

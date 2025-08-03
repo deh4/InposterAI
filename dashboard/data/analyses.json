@@ -1,0 +1,65 @@
+[
+  {
+    "id": "654f7d29-98aa-428e-a1e9-204bd7cb4117",
+    "timestamp": 1754223026153,
+    "likelihood": 10,
+    "confidence": 83,
+    "analysisTime": 18424,
+    "modelName": "unknown",
+    "textLength": 3925,
+    "contentType": "article",
+    "domain": "other_site",
+    "language": "latin",
+    "method": "ensemble",
+    "fromCache": false,
+    "statisticalBreakdown": {
+      "perplexityScore": 0,
+      "burstinessScore": 40,
+      "vocabularyDiversity": 66,
+      "sentenceLengthVariance": 0,
+      "averageSentenceLength": 16,
+      "aiIndicatorScore": 30,
+      "hedgeWordDensity": 8.720930232558139,
+      "passiveVoiceRatio": 37.2093023255814,
+      "repetitionScore": 100,
+      "punctuationVariety": 76,
+      "overallAILikelihood": 0,
+      "confidence": 0
+    },
+    "metadata": {
+      "url": "https://dehakuran.com/t-shaped-profiles-around-you/",
+      "title": "T-shaped Profiles around you - Deha Kuran",
+      "wordCount": 687,
+      "source": "article"
+    }
+  },
+  {
+    "id": "3a3b531c-5723-4466-8844-2e3017397cab",
+    "timestamp": 1754223136456,
+    "likelihood": 5,
+    "confidence": 88,
+    "analysisTime": 10667,
+    "modelName": "unknown",
+    "textLength": 427,
+    "contentType": "social_post",
+    "domain": "unknown",
+    "language": "latin",
+    "method": "ensemble",
+    "fromCache": false,
+    "statisticalBreakdown": {
+      "perplexityScore": 0,
+      "burstinessScore": 61,
+      "vocabularyDiversity": 25,
+      "sentenceLengthVariance": 23,
+      "averageSentenceLength": 15,
+      "aiIndicatorScore": 0,
+      "hedgeWordDensity": 0,
+      "passiveVoiceRatio": 0,
+      "repetitionScore": 5,
+      "punctuationVariety": 53,
+      "overallAILikelihood": 0,
+      "confidence": 0
+    },
+    "metadata": {}
+  }
+]

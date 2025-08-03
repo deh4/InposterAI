@@ -144,7 +144,16 @@ function initializeContentAnalyzer() {
         source: source,
         url: window.location.href,
         title: document.title,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        // Enhanced content context
+        language: document.documentElement.lang || 'unknown',
+        domain: window.location.hostname,
+        readingTime: Math.ceil(content.split(/\s+/).length / 200), // Assume 200 WPM
+        contentContext: {
+          images: document.querySelectorAll('img').length,
+          links: document.querySelectorAll('a').length,
+          headings: document.querySelectorAll('h1, h2, h3, h4, h5, h6').length
+        }
       };
     }
 
