@@ -1,0 +1,62 @@
+{
+  "name": "ai-content-detector-extension",
+  "version": "0.1.0",
+  "description": "An open-source Opera browser extension that analyzes web articles to determine if they were written by AI or humans, running completely locally using Ollama.",
+  "main": "src/background/background.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "dev": "webpack --mode development --watch",
+    "build": "webpack --mode production",
+    "lint": "eslint src/ --ext .js",
+    "lint:fix": "eslint src/ --ext .js --fix",
+    "format": "prettier --write \"src/**/*.{js,json,css,html}\"",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "clean": "rm -rf dist/ web-ext-artifacts/",
+    "package": "web-ext build --source-dir=dist/ --artifacts-dir=web-ext-artifacts/",
+    "start:firefox": "web-ext run --source-dir=dist/ --browser-console",
+    "start:chrome": "web-ext run --source-dir=dist/ --target=chromium"
+  },
+  "keywords": [
+    "browser-extension",
+    "ai-detection",
+    "content-analysis",
+    "ollama",
+    "privacy",
+    "local-ai",
+    "opera",
+    "chrome",
+    "open-source"
+  ],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "browserslist": [
+    "Chrome >= 88",
+    "Firefox >= 78",
+    "Opera >= 74"
+  ],
+  "devDependencies": {
+    "@babel/core": "^7.28.0",
+    "@babel/preset-env": "^7.28.0",
+    "@types/chrome": "^0.1.1",
+    "babel-loader": "^10.0.0",
+    "copy-webpack-plugin": "^13.0.0",
+    "css-loader": "^7.1.2",
+    "eslint": "^9.32.0",
+    "jest": "^30.0.5",
+    "jest-environment-jsdom": "^30.0.5",
+    "prettier": "^3.6.2",
+    "puppeteer": "^24.15.0",
+    "style-loader": "^4.0.0",
+    "web-ext": "^8.9.0",
+    "webpack": "^5.101.0",
+    "webpack-cli": "^6.0.1"
+  }
+}
