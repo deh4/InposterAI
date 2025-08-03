@@ -408,6 +408,8 @@ function initializeContentAnalyzer() {
            const selection = window.getSelection();
            const selectedText = selection.toString().trim();
            if (selectedText.length >= 20) {
+             // Hide any existing tooltip
+             this.hideSelectionTooltip();
              this.performSelectionAnalysis(selectedText);
            }
          }
@@ -520,6 +522,8 @@ function initializeContentAnalyzer() {
       analyzeBtn.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
+        // Immediately hide tooltip to prevent it from lingering
+        this.hideSelectionTooltip();
         this.performSelectionAnalysis(selectedText);
       });
       
@@ -782,8 +786,7 @@ function initializeContentAnalyzer() {
         // Set analyzing state to prevent tooltip from disappearing
         this.isAnalyzing = true;
         
-        // Hide selection tooltip and show analysis modal
-        this.hideSelectionTooltip();
+        // Show analysis modal (tooltip should already be hidden by caller)
         this.showAnalysisModal(selectedText);
         
         // Use the same analysis system as the toolbar
@@ -823,13 +826,33 @@ function initializeContentAnalyzer() {
 
 
     formatReasoning(reasoning) {
-      if (!reasoning) return 'No reasoning provided.';
+      if (!reasoning) return '<p class="no-reasoning">No reasoning provided.</p>';
       
-      // Basic formatting similar to TextFormatter
-      return reasoning
+      // Enhanced formatting for better readability
+      let formatted = reasoning
+        // Handle bold text
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
         .replace(/\*(.*?)\*/g, '<em>$1</em>')
-        .replace(/\n/g, '<br>');
+        // Convert line breaks
+        .replace(/\n/g, '</p><p>')
+        // Handle quoted text
+        .replace(/'([^']+)'/g, '<span class="quoted-text">"$1"</span>')
+        // Handle parenthetical text
+        .replace(/\(([^)]+)\)/g, '<span class="parenthetical">($1)</span>')
+        // Handle technical terms or formal phrases
+        .replace(/\b(AI-generated|statistical|ensemble|perplexity|burstiness)\b/gi, '<span class="technical-term">$1</span>')
+        // Highlight confidence indicators
+        .replace(/\b(high confidence|low confidence|medium confidence|very likely|unlikely)\b/gi, '<span class="confidence-indicator">$1</span>');
+      
+      // Wrap in paragraphs if not already wrapped
+      if (!formatted.startsWith('<p>')) {
+        formatted = '<p>' + formatted + '</p>';
+      }
+      
+      // Clean up empty paragraphs
+      formatted = formatted.replace(/<p><\/p>/g, '');
+      
+      return formatted;
     }
 
     renderStatisticalBreakdown(analysisData) {
@@ -2037,6 +2060,189 @@ function initializeContentAnalyzer() {
 
         .ai-detector-analysis-modal .back-btn:hover {
           background: #f3f4f6 !important;
+        }
+
+        /* Enhanced Text Formatting Styles */
+        .ai-detector-analysis-modal .reasoning {
+          background: #f9fafb !important;
+          padding: 20px !important;
+          border-radius: 8px !important;
+          margin-bottom: 16px !important;
+          font-size: 14px !important;
+          line-height: 1.6 !important;
+          color: #374151 !important;
+          border-left: 4px solid #3b82f6 !important;
+        }
+
+        .ai-detector-analysis-modal .reasoning p {
+          margin: 0 0 12px 0 !important;
+        }
+
+        .ai-detector-analysis-modal .reasoning p:last-child {
+          margin-bottom: 0 !important;
+        }
+
+        .ai-detector-analysis-modal .no-reasoning {
+          color: #6b7280 !important;
+          font-style: italic !important;
+        }
+
+        .ai-detector-analysis-modal .quoted-text {
+          background: rgba(59, 130, 246, 0.1) !important;
+          color: #1e40af !important;
+          padding: 2px 4px !important;
+          border-radius: 3px !important;
+          font-weight: 500 !important;
+        }
+
+        .ai-detector-analysis-modal .parenthetical {
+          color: #6b7280 !important;
+          font-size: 13px !important;
+        }
+
+        .ai-detector-analysis-modal .technical-term {
+          background: #f0f9ff !important;
+          color: #0369a1 !important;
+          padding: 1px 6px !important;
+          border-radius: 4px !important;
+          font-weight: 500 !important;
+          font-size: 13px !important;
+          border: 1px solid #bae6fd !important;
+        }
+
+        .ai-detector-analysis-modal .confidence-indicator {
+          background: #ecfdf5 !important;
+          color: #065f46 !important;
+          padding: 2px 6px !important;
+          border-radius: 4px !important;
+          font-weight: 600 !important;
+          font-size: 13px !important;
+          border: 1px solid #bbf7d0 !important;
+        }
+
+        /* Improved Statistical Breakdown */
+        .ai-detector-analysis-modal .statistical-breakdown {
+          background: #f8fafc !important;
+          padding: 18px !important;
+          border-radius: 8px !important;
+          margin-bottom: 16px !important;
+          border: 1px solid #e2e8f0 !important;
+        }
+
+        .ai-detector-analysis-modal .statistical-breakdown h4 {
+          margin: 0 0 14px 0 !important;
+          font-size: 15px !important;
+          font-weight: 600 !important;
+          color: #374151 !important;
+          display: flex !important;
+          align-items: center !important;
+          gap: 8px !important;
+        }
+
+        .ai-detector-analysis-modal .stats-grid {
+          display: grid !important;
+          grid-template-columns: 1fr 1fr !important;
+          gap: 10px !important;
+          margin-bottom: 14px !important;
+        }
+
+        .ai-detector-analysis-modal .stat-item {
+          display: flex !important;
+          justify-content: space-between !important;
+          align-items: center !important;
+          padding: 8px 12px !important;
+          background: white !important;
+          border-radius: 6px !important;
+          font-size: 13px !important;
+          border: 1px solid #e5e7eb !important;
+        }
+
+        .ai-detector-analysis-modal .stat-label {
+          color: #6b7280 !important;
+          font-weight: 500 !important;
+        }
+
+        .ai-detector-analysis-modal .stat-value {
+          color: #374151 !important;
+          font-weight: 600 !important;
+          padding: 2px 6px !important;
+          background: #f3f4f6 !important;
+          border-radius: 4px !important;
+        }
+
+        .ai-detector-analysis-modal .analysis-method {
+          text-align: center !important;
+          color: #6b7280 !important;
+          font-size: 12px !important;
+          padding: 8px !important;
+          background: rgba(59, 130, 246, 0.05) !important;
+          border-radius: 6px !important;
+        }
+
+        /* Enhanced Progress State */
+        .ai-detector-analysis-modal .progress-container {
+          display: flex !important;
+          flex-direction: column !important;
+          align-items: center !important;
+          gap: 16px !important;
+          padding: 20px !important;
+        }
+
+        .ai-detector-analysis-modal .progress-text {
+          color: #374151 !important;
+          font-size: 16px !important;
+          font-weight: 600 !important;
+          text-align: center !important;
+        }
+
+        .ai-detector-analysis-modal .progress-bar {
+          width: 200px !important;
+          height: 6px !important;
+          background: #e5e7eb !important;
+          border-radius: 3px !important;
+          overflow: hidden !important;
+        }
+
+        .ai-detector-analysis-modal .progress-fill {
+          height: 100% !important;
+          background: linear-gradient(90deg, #3b82f6, #8b5cf6, #3b82f6) !important;
+          background-size: 200% 100% !important;
+          border-radius: 3px !important;
+          width: 0% !important;
+          animation: ai-detector-progress-load 2s ease-in-out infinite, ai-detector-gradient 1.5s ease-in-out infinite !important;
+        }
+
+        /* Improved Text Info Section */
+        .ai-detector-analysis-modal .text-info {
+          background: #f1f5f9 !important;
+          padding: 14px !important;
+          border-radius: 8px !important;
+          margin-bottom: 16px !important;
+          border-left: 3px solid #0ea5e9 !important;
+        }
+
+        .ai-detector-analysis-modal .text-info .text-preview {
+          font-size: 13px !important;
+          color: #475569 !important;
+          margin-bottom: 8px !important;
+          line-height: 1.4 !important;
+        }
+
+        .ai-detector-analysis-modal .text-info .result-meta {
+          font-size: 12px !important;
+          color: #64748b !important;
+          display: flex !important;
+          align-items: center !important;
+          gap: 8px !important;
+        }
+
+        .ai-detector-analysis-modal .cache-indicator {
+          background: #dbeafe !important;
+          color: #1e40af !important;
+          padding: 2px 6px !important;
+          border-radius: 3px !important;
+          font-size: 11px !important;
+          font-weight: 500 !important;
         }
 
         /* Reuse popup analysis styles in modal */
