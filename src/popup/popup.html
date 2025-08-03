@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Content Detector</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <img src="../assets/icon-48.png" alt="AI Detector" class="logo-icon">
+        <h1 class="title">AI Content Detector</h1>
+      </div>
+      <div class="status-indicator" id="ollamaStatus">
+        <span class="status-dot"></span>
+        <span class="status-text">Checking...</span>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="content">
+      <!-- Current Page Analysis -->
+      <section class="analysis-section">
+        <div class="section-header">
+          <h2>Current Page</h2>
+          <button id="analyzeButton" class="btn btn-primary">
+            <span class="btn-icon">🔍</span>
+            Analyze
+          </button>
+        </div>
+        
+        <div id="analysisResult" class="analysis-result hidden">
+          <div class="result-header">
+            <div class="likelihood-score" id="likelihoodScore">
+              <span class="score-value">--</span>
+              <span class="score-label">AI Likelihood</span>
+            </div>
+            <div class="confidence-score" id="confidenceScore">
+              <span class="score-value">--</span>
+              <span class="score-label">Confidence</span>
+            </div>
+          </div>
+          
+          <div class="result-details">
+            <div class="reasoning" id="reasoning">
+              Analysis reasoning will appear here...
+            </div>
+            
+            <div class="result-meta">
+              <span id="analysisTime">--</span>
+              <span id="cacheStatus" class="cache-indicator hidden">📁 Cached</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="noContentMessage" class="no-content hidden">
+          <p>No analyzable content found on this page.</p>
+          <small>Try navigating to an article or blog post.</small>
+        </div>
+
+        <div id="errorMessage" class="error-message hidden">
+          <p id="errorText">An error occurred during analysis.</p>
+          <button id="retryButton" class="btn btn-secondary">Retry</button>
+        </div>
+      </section>
+
+      <!-- Quick Actions -->
+      <section class="actions-section">
+        <div class="section-header">
+          <h3>Quick Actions</h3>
+        </div>
+        
+        <div class="action-buttons">
+          <button id="settingsButton" class="btn btn-outline">
+            <span class="btn-icon">⚙️</span>
+            Settings
+          </button>
+          
+          <button id="historyButton" class="btn btn-outline">
+            <span class="btn-icon">📊</span>
+            History
+          </button>
+          
+          <button id="helpButton" class="btn btn-outline">
+            <span class="btn-icon">❓</span>
+            Help
+          </button>
+        </div>
+      </section>
+
+      <!-- Settings Panel (Initially Hidden) -->
+      <section id="settingsPanel" class="settings-panel hidden">
+        <div class="section-header">
+          <h3>Settings</h3>
+          <button id="closeSettings" class="btn btn-text">✕</button>
+        </div>
+        
+        <div class="setting-group">
+          <label class="setting-label">
+            <input type="checkbox" id="autoAnalyzeToggle">
+            <span class="checkmark"></span>
+            Auto-analyze pages
+          </label>
+        </div>
+        
+                 <div class="setting-group">
+           <label class="setting-label" for="modelSelect">Model</label>
+           <select id="modelSelect" class="setting-select" title="Select AI model for analysis">
+             <option value="gemma3n:e4b">Gemma 3B (Recommended)</option>
+             <option value="gemma3:12b">Gemma 12B</option>
+             <option value="gemma3:27b">Gemma 27B</option>
+           </select>
+         </div>
+         
+         <div class="setting-group">
+           <label class="setting-label" for="sensitivitySelect">Sensitivity</label>
+           <select id="sensitivitySelect" class="setting-select" title="Select analysis sensitivity level">
+             <option value="low">Low</option>
+             <option value="medium">Medium</option>
+             <option value="high">High</option>
+           </select>
+         </div>
+        
+        <div class="setting-actions">
+          <button id="saveSettings" class="btn btn-primary">Save</button>
+          <button id="resetSettings" class="btn btn-secondary">Reset</button>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="footer-info">
+        <span class="version">v0.1.0</span>
+        <span class="separator">•</span>
+        <a href="#" id="aboutLink" class="footer-link">About</a>
+        <span class="separator">•</span>
+        <a href="#" id="githubLink" class="footer-link">GitHub</a>
+      </div>
+    </footer>
+  </div>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html> 
