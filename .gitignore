@@ -79,4 +79,8 @@ web-ext-artifacts/
 
 # Test artifacts
 test-results/
-screenshots/ 
+screenshots/
+
+# Analytics data (user-specific)
+dashboard/data/analytics.db
+dashboard/data/*.db 
