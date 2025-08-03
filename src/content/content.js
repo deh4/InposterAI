@@ -401,17 +401,17 @@ function initializeContentAnalyzer() {
       document.addEventListener('keyup', this.handleSelection.bind(this));
       document.addEventListener('selectionchange', this.handleSelectionChange.bind(this));
       
-      // Add keyboard shortcut (Ctrl/Cmd + Shift + A) for analysis
-      document.addEventListener('keydown', (event) => {
-        if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === 'A') {
-          event.preventDefault();
-          const selection = window.getSelection();
-          const selectedText = selection.toString().trim();
-          if (selectedText.length >= 20) {
-            this.performQuickAnalysis(selectedText);
-          }
-        }
-      });
+             // Add keyboard shortcut (Ctrl/Cmd + Shift + A) for analysis
+       document.addEventListener('keydown', (event) => {
+         if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === 'A') {
+           event.preventDefault();
+           const selection = window.getSelection();
+           const selectedText = selection.toString().trim();
+           if (selectedText.length >= 20) {
+             this.performSelectionAnalysis(selectedText);
+           }
+         }
+       });
       
       // Hide tooltip when clicking elsewhere
       document.addEventListener('mousedown', (event) => {
@@ -520,7 +520,7 @@ function initializeContentAnalyzer() {
       analyzeBtn.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
-        this.performQuickAnalysis(selectedText);
+        this.performSelectionAnalysis(selectedText);
       });
       
       // Add to page
@@ -544,98 +544,128 @@ function initializeContentAnalyzer() {
       }
     }
 
-    async performQuickAnalysis(selectedText) {
+    showAnalysisProgress() {
+      if (!this.selectionTooltip) return;
+      
+      const tooltipContent = this.selectionTooltip.querySelector('.tooltip-content');
+      tooltipContent.innerHTML = `
+        <div class="progress-container">
+          <div class="progress-bar">
+            <div class="progress-fill"></div>
+          </div>
+          <div class="progress-text">Analyzing...</div>
+        </div>
+      `;
+    }
+
+    showAnalysisError(errorMessage) {
+      if (!this.selectionTooltip) return;
+      
+      const tooltipContent = this.selectionTooltip.querySelector('.tooltip-content');
+      tooltipContent.innerHTML = `
+        <div class="error-container">
+          <span class="error-icon">⚠️</span>
+          <span class="error-text">${errorMessage}</span>
+        </div>
+      `;
+      
+      // Hide tooltip after showing error
+      setTimeout(() => {
+        this.hideSelectionTooltip();
+      }, 3000);
+    }
+
+    async performSelectionAnalysis(selectedText) {
       const analyzeBtn = this.selectionTooltip?.querySelector('.analyze-btn');
       if (!analyzeBtn) return;
       
       try {
-        // Show loading state
-        analyzeBtn.innerHTML = `
-          <div class="loading-spinner"></div>
-          <span>Analyzing...</span>
-        `;
-        analyzeBtn.disabled = true;
+        // Transform button into progress bar
+        this.showAnalysisProgress();
         
-        // Perform analysis
-        const analysisData = await this.analyzeSelectedText(selectedText);
+        // Use the same analysis system as the toolbar
+        const response = await chrome.runtime.sendMessage({
+          action: 'analyzeText',
+          text: selectedText,
+          metadata: {
+            url: window.location.href,
+            title: document.title,
+            wordCount: selectedText.split(/\s+/).length,
+            source: 'text-selection',
+            language: document.documentElement.lang || 'unknown',
+            domain: window.location.hostname,
+            readingTime: Math.ceil(selectedText.split(/\s+/).length / 200),
+            contentContext: {
+              selectionLength: selectedText.length,
+              isPartialContent: true
+            }
+          }
+        });
         
-        // Hide tooltip and show result
+        if (!response.success) {
+          throw new Error(response.error || 'Analysis failed');
+        }
+        
+        // Hide tooltip and show inline results
         this.hideSelectionTooltip();
-        this.showQuickAnalysisResult(analysisData, selectedText);
+        this.showInlineAnalysisResult(response.data, selectedText);
         
       } catch (error) {
-        console.error('Quick analysis failed:', error);
-        
-        // Show error state
-        analyzeBtn.innerHTML = `
-          <span style="color: #dc3545;">⚠️ Error</span>
-        `;
-        
-        setTimeout(() => {
-          this.hideSelectionTooltip();
-        }, 2000);
+        console.error('Selection analysis failed:', error);
+        this.showAnalysisError(error.message);
       }
     }
 
-    async analyzeSelectedText(selectedText) {
-      // Create metadata for selected text
-      const metadata = {
-        url: window.location.href,
-        title: document.title,
-        wordCount: selectedText.split(/\s+/).length,
-        source: 'text-selection',
-        language: document.documentElement.lang || 'unknown',
-        domain: window.location.hostname,
-        readingTime: Math.ceil(selectedText.split(/\s+/).length / 200),
-        contentContext: {
-          selectionLength: selectedText.length,
-          isPartialContent: true
-        }
-      };
-      
-      // Send analysis request to background script
-      const response = await chrome.runtime.sendMessage({
-        action: 'analyzeText',
-        text: selectedText,
-        metadata: metadata
-      });
-      
-      if (!response.success) {
-        throw new Error(response.error || 'Analysis failed');
-      }
-      
-      return response.data;
-    }
-
-    showQuickAnalysisResult(analysisData, selectedText) {
-      // Create result overlay
+    showInlineAnalysisResult(analysisData, selectedText) {
+      // Create inline result overlay similar to popup styling
       const overlay = document.createElement('div');
-      overlay.className = 'ai-detector-quick-result';
+      overlay.className = 'ai-detector-inline-result';
       overlay.innerHTML = `
-        <div class="quick-result-content">
+        <div class="inline-result-content">
           <div class="result-header">
-            <h3>Quick Analysis Result</h3>
+            <h3>Analysis Result</h3>
             <button class="close-btn" title="Close">&times;</button>
           </div>
-          <div class="result-body">
-            <div class="likelihood-display">
-              <div class="likelihood-circle ${this.getLikelihoodClass(analysisData.likelihood)}">
-                <span class="likelihood-value">${Math.round(analysisData.likelihood)}%</span>
-                <span class="likelihood-label">AI Generated</span>
+          
+          <div class="analysis-result">
+            <div class="result-header">
+              <div class="likelihood-score ${this.getLikelihoodClass(analysisData.likelihood)}" id="likelihoodScore">
+                <span class="score-value">${Math.round(analysisData.likelihood)}%</span>
+                <span class="score-label">AI Likelihood</span>
               </div>
-              <div class="confidence-info">
-                Confidence: ${Math.round(analysisData.confidence)}%
+              <div class="confidence-score" id="confidenceScore">
+                <span class="score-value">${Math.round(analysisData.confidence)}%</span>
+                <span class="score-label">Confidence</span>
               </div>
             </div>
-            <div class="analysis-details">
-              <div class="text-preview">
-                <strong>Analyzed text:</strong> "${selectedText.substring(0, 100)}${selectedText.length > 100 ? '...' : ''}"
+            
+            <div class="result-details">
+              <div class="reasoning" id="reasoning">
+                ${this.formatReasoning(analysisData.reasoning)}
               </div>
-              <div class="word-count">
-                <strong>Words analyzed:</strong> ${selectedText.split(/\s+/).length}
+              
+              <div class="statistical-breakdown" id="statisticalBreakdown">
+                <h4>📊 Statistical Analysis</h4>
+                <div class="stats-grid">
+                  ${this.renderStatisticalBreakdown(analysisData)}
+                </div>
+                <div class="analysis-method">
+                  <small>🔬 Method: ${analysisData.method || 'ensemble'}</small>
+                </div>
+              </div>
+              
+              <div class="analysis-details">
+                <div class="text-preview">
+                  <strong>Analyzed text:</strong> "${selectedText.substring(0, 100)}${selectedText.length > 100 ? '...' : ''}"
+                </div>
+                <div class="result-meta">
+                  <span>${selectedText.split(/\s+/).length} words • ${new Date().toLocaleTimeString()}</span>
+                  ${analysisData.fromCache ? '<span class="cache-indicator">📁 Cached</span>' : ''}
+                </div>
               </div>
             </div>
           </div>
+          
           <div class="result-actions">
             <button class="btn-secondary feedback-btn">Provide Feedback</button>
             <button class="btn-primary details-btn">View Details</button>
@@ -646,32 +676,32 @@ function initializeContentAnalyzer() {
       // Add event listeners
       const closeBtn = overlay.querySelector('.close-btn');
       closeBtn.addEventListener('click', () => {
-        this.hideQuickResult(overlay);
+        this.hideInlineResult(overlay);
       });
       
       const feedbackBtn = overlay.querySelector('.feedback-btn');
       feedbackBtn.addEventListener('click', () => {
         this.showFeedbackForSelection(analysisData);
-        this.hideQuickResult(overlay);
+        this.hideInlineResult(overlay);
       });
       
       const detailsBtn = overlay.querySelector('.details-btn');
       detailsBtn.addEventListener('click', () => {
         this.showDetailedResults(analysisData);
-        this.hideQuickResult(overlay);
+        this.hideInlineResult(overlay);
       });
       
       // Close on click outside
       overlay.addEventListener('click', (event) => {
         if (event.target === overlay) {
-          this.hideQuickResult(overlay);
+          this.hideInlineResult(overlay);
         }
       });
       
       // Close on Escape key
       const escapeHandler = (event) => {
         if (event.key === 'Escape') {
-          this.hideQuickResult(overlay);
+          this.hideInlineResult(overlay);
           document.removeEventListener('keydown', escapeHandler);
         }
       };
@@ -684,7 +714,7 @@ function initializeContentAnalyzer() {
       });
     }
 
-    hideQuickResult(overlay) {
+    hideInlineResult(overlay) {
       overlay.classList.add('hiding');
       setTimeout(() => {
         if (overlay.parentNode) {
@@ -692,6 +722,40 @@ function initializeContentAnalyzer() {
         }
       }, 300);
     }
+
+    formatReasoning(reasoning) {
+      if (!reasoning) return 'No reasoning provided.';
+      
+      // Basic formatting similar to TextFormatter
+      return reasoning
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        .replace(/\n/g, '<br>');
+    }
+
+    renderStatisticalBreakdown(analysisData) {
+      const breakdown = analysisData.statisticalBreakdown || {};
+      return `
+        <div class="stat-item">
+          <span class="stat-label">Perplexity</span>
+          <span class="stat-value">${breakdown.perplexityScore || '--'}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Burstiness</span>
+          <span class="stat-value">${breakdown.burstinessScore || '--'}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Vocabulary</span>
+          <span class="stat-value">${breakdown.vocabularyDiversity || '--'}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">AI Indicators</span>
+          <span class="stat-value">${breakdown.aiIndicatorScore || '--'}</span>
+        </div>
+      `;
+    }
+
+
 
     getLikelihoodClass(likelihood) {
       if (likelihood >= 80) return 'high-ai';
@@ -1458,8 +1522,69 @@ function initializeContentAnalyzer() {
           animation: ai-detector-spin 1s linear infinite !important;
         }
 
-        /* Quick Analysis Result Overlay */
-        .ai-detector-quick-result {
+
+
+        @keyframes ai-detector-spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+
+        /* Progress Bar Styles */
+        .ai-detector-selection-tooltip .progress-container {
+          display: flex !important;
+          flex-direction: column !important;
+          align-items: center !important;
+          gap: 8px !important;
+          padding: 4px !important;
+        }
+
+        .ai-detector-selection-tooltip .progress-bar {
+          width: 120px !important;
+          height: 4px !important;
+          background: rgba(255, 255, 255, 0.2) !important;
+          border-radius: 2px !important;
+          overflow: hidden !important;
+        }
+
+        .ai-detector-selection-tooltip .progress-fill {
+          height: 100% !important;
+          background: linear-gradient(90deg, #3b82f6, #8b5cf6, #3b82f6) !important;
+          background-size: 200% 100% !important;
+          border-radius: 2px !important;
+          width: 0% !important;
+          animation: ai-detector-progress-load 2s ease-in-out infinite, ai-detector-gradient 1.5s ease-in-out infinite !important;
+        }
+
+        .ai-detector-selection-tooltip .progress-text {
+          color: #e5e7eb !important;
+          font-size: 11px !important;
+          font-weight: 500 !important;
+        }
+
+        .ai-detector-selection-tooltip .error-container {
+          display: flex !important;
+          align-items: center !important;
+          gap: 6px !important;
+          color: #ef4444 !important;
+        }
+
+        .ai-detector-selection-tooltip .error-icon {
+          font-size: 14px !important;
+        }
+
+        .ai-detector-selection-tooltip .error-text {
+          font-size: 11px !important;
+          font-weight: 500 !important;
+        }
+
+        @keyframes ai-detector-progress-load {
+          0% { width: 0%; }
+          50% { width: 70%; }
+          100% { width: 100%; }
+        }
+
+        /* Inline Analysis Result Styles (reusing popup styles) */
+        .ai-detector-inline-result {
           position: fixed !important;
           top: 0 !important;
           left: 0 !important;
@@ -1475,15 +1600,15 @@ function initializeContentAnalyzer() {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
         }
 
-        .ai-detector-quick-result.show {
+        .ai-detector-inline-result.show {
           opacity: 1 !important;
         }
 
-        .ai-detector-quick-result.hiding {
+        .ai-detector-inline-result.hiding {
           opacity: 0 !important;
         }
 
-        .ai-detector-quick-result .quick-result-content {
+        .ai-detector-inline-result .inline-result-content {
           background: white !important;
           border-radius: 12px !important;
           box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25) !important;
@@ -1495,11 +1620,11 @@ function initializeContentAnalyzer() {
           transition: transform 0.3s ease-out !important;
         }
 
-        .ai-detector-quick-result.show .quick-result-content {
+        .ai-detector-inline-result.show .inline-result-content {
           transform: scale(1) translateY(0) !important;
         }
 
-        .ai-detector-quick-result .result-header {
+        .ai-detector-inline-result .result-header {
           padding: 20px 24px 0 24px !important;
           display: flex !important;
           justify-content: space-between !important;
@@ -1508,14 +1633,14 @@ function initializeContentAnalyzer() {
           margin-bottom: 20px !important;
         }
 
-        .ai-detector-quick-result .result-header h3 {
+        .ai-detector-inline-result .result-header h3 {
           margin: 0 !important;
           font-size: 18px !important;
           font-weight: 600 !important;
           color: #111827 !important;
         }
 
-        .ai-detector-quick-result .close-btn {
+        .ai-detector-inline-result .close-btn {
           background: none !important;
           border: none !important;
           font-size: 24px !important;
@@ -1531,97 +1656,158 @@ function initializeContentAnalyzer() {
           transition: background-color 0.2s ease !important;
         }
 
-        .ai-detector-quick-result .close-btn:hover {
+        .ai-detector-inline-result .close-btn:hover {
           background: #f3f4f6 !important;
           color: #374151 !important;
         }
 
-        .ai-detector-quick-result .result-body {
+        /* Reuse popup analysis styles */
+        .ai-detector-inline-result .analysis-result {
           padding: 0 24px !important;
         }
 
-        .ai-detector-quick-result .likelihood-display {
+        .ai-detector-inline-result .analysis-result .result-header {
+          padding: 0 !important;
+          border: none !important;
+          margin-bottom: 16px !important;
           display: flex !important;
-          align-items: center !important;
           gap: 16px !important;
-          margin-bottom: 20px !important;
         }
 
-        .ai-detector-quick-result .likelihood-circle {
-          width: 80px !important;
-          height: 80px !important;
-          border-radius: 50% !important;
-          display: flex !important;
-          flex-direction: column !important;
-          align-items: center !important;
-          justify-content: center !important;
-          border: 3px solid !important;
-          flex-shrink: 0 !important;
+        .ai-detector-inline-result .likelihood-score,
+        .ai-detector-inline-result .confidence-score {
+          flex: 1 !important;
+          text-align: center !important;
+          padding: 16px !important;
+          border-radius: 8px !important;
+          border: 2px solid #e5e7eb !important;
         }
 
-        .ai-detector-quick-result .likelihood-circle.high-ai {
+        .ai-detector-inline-result .likelihood-score.high-ai {
           background: #fee2e2 !important;
           border-color: #ef4444 !important;
           color: #dc2626 !important;
         }
 
-        .ai-detector-quick-result .likelihood-circle.medium-ai {
+        .ai-detector-inline-result .likelihood-score.medium-ai {
           background: #fef3c7 !important;
           border-color: #f59e0b !important;
           color: #d97706 !important;
         }
 
-        .ai-detector-quick-result .likelihood-circle.low-ai {
+        .ai-detector-inline-result .likelihood-score.low-ai {
           background: #dbeafe !important;
           border-color: #3b82f6 !important;
           color: #2563eb !important;
         }
 
-        .ai-detector-quick-result .likelihood-circle.human {
+        .ai-detector-inline-result .likelihood-score.human {
           background: #dcfce7 !important;
           border-color: #22c55e !important;
           color: #16a34a !important;
         }
 
-        .ai-detector-quick-result .likelihood-value {
-          font-size: 20px !important;
+        .ai-detector-inline-result .score-value {
+          display: block !important;
+          font-size: 24px !important;
           font-weight: 700 !important;
           line-height: 1 !important;
         }
 
-        .ai-detector-quick-result .likelihood-label {
-          font-size: 10px !important;
+        .ai-detector-inline-result .score-label {
+          display: block !important;
+          font-size: 12px !important;
           font-weight: 500 !important;
-          text-transform: uppercase !important;
-          letter-spacing: 0.5px !important;
+          margin-top: 4px !important;
           opacity: 0.8 !important;
         }
 
-        .ai-detector-quick-result .confidence-info {
+        .ai-detector-inline-result .reasoning {
+          background: #f9fafb !important;
+          padding: 16px !important;
+          border-radius: 8px !important;
+          margin-bottom: 16px !important;
           font-size: 14px !important;
+          line-height: 1.5 !important;
+          color: #374151 !important;
+        }
+
+        .ai-detector-inline-result .statistical-breakdown {
+          background: #f9fafb !important;
+          padding: 16px !important;
+          border-radius: 8px !important;
+          margin-bottom: 16px !important;
+        }
+
+        .ai-detector-inline-result .statistical-breakdown h4 {
+          margin: 0 0 12px 0 !important;
+          font-size: 14px !important;
+          font-weight: 600 !important;
+          color: #374151 !important;
+        }
+
+        .ai-detector-inline-result .stats-grid {
+          display: grid !important;
+          grid-template-columns: 1fr 1fr !important;
+          gap: 8px !important;
+          margin-bottom: 12px !important;
+        }
+
+        .ai-detector-inline-result .stat-item {
+          display: flex !important;
+          justify-content: space-between !important;
+          align-items: center !important;
+          padding: 6px 8px !important;
+          background: white !important;
+          border-radius: 4px !important;
+          font-size: 12px !important;
+        }
+
+        .ai-detector-inline-result .stat-label {
+          color: #6b7280 !important;
+          font-weight: 500 !important;
+        }
+
+        .ai-detector-inline-result .stat-value {
+          color: #374151 !important;
+          font-weight: 600 !important;
+        }
+
+        .ai-detector-inline-result .analysis-method {
+          text-align: center !important;
           color: #6b7280 !important;
         }
 
-        .ai-detector-quick-result .analysis-details {
-          background: #f9fafb !important;
-          border-radius: 8px !important;
-          padding: 16px !important;
-          margin-bottom: 20px !important;
+        .ai-detector-inline-result .analysis-details {
+          background: #f3f4f6 !important;
+          padding: 12px !important;
+          border-radius: 6px !important;
+          margin-bottom: 16px !important;
         }
 
-        .ai-detector-quick-result .text-preview {
-          font-size: 14px !important;
+        .ai-detector-inline-result .text-preview {
+          font-size: 13px !important;
           color: #374151 !important;
           margin-bottom: 8px !important;
-          line-height: 1.5 !important;
+          line-height: 1.4 !important;
         }
 
-        .ai-detector-quick-result .word-count {
-          font-size: 12px !important;
+        .ai-detector-inline-result .result-meta {
+          font-size: 11px !important;
           color: #6b7280 !important;
+          display: flex !important;
+          align-items: center !important;
+          gap: 8px !important;
         }
 
-        .ai-detector-quick-result .result-actions {
+        .ai-detector-inline-result .cache-indicator {
+          background: #e5e7eb !important;
+          padding: 2px 6px !important;
+          border-radius: 3px !important;
+          font-size: 10px !important;
+        }
+
+        .ai-detector-inline-result .result-actions {
           padding: 20px 24px 24px 24px !important;
           display: flex !important;
           gap: 12px !important;
@@ -1629,7 +1815,7 @@ function initializeContentAnalyzer() {
           border-top: 1px solid #f3f4f6 !important;
         }
 
-        .ai-detector-quick-result .btn-primary {
+        .ai-detector-inline-result .btn-primary {
           background: #3b82f6 !important;
           color: white !important;
           border: none !important;
@@ -1641,11 +1827,11 @@ function initializeContentAnalyzer() {
           transition: background-color 0.2s ease !important;
         }
 
-        .ai-detector-quick-result .btn-primary:hover {
+        .ai-detector-inline-result .btn-primary:hover {
           background: #2563eb !important;
         }
 
-        .ai-detector-quick-result .btn-secondary {
+        .ai-detector-inline-result .btn-secondary {
           background: #f9fafb !important;
           color: #374151 !important;
           border: 1px solid #d1d5db !important;
@@ -1657,13 +1843,8 @@ function initializeContentAnalyzer() {
           transition: background-color 0.2s ease !important;
         }
 
-        .ai-detector-quick-result .btn-secondary:hover {
+        .ai-detector-inline-result .btn-secondary:hover {
           background: #f3f4f6 !important;
-        }
-
-        @keyframes ai-detector-spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
         }
       `;
       
