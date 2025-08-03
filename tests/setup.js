@@ -43,18 +43,6 @@ global.chrome = {
 // Mock fetch for Ollama API calls
 global.fetch = jest.fn();
 
-// Mock DOM APIs that might be used
-Object.defineProperty(window, 'location', {
-  value: {
-    href: 'https://example.com',
-    hostname: 'example.com',
-    pathname: '/',
-    search: '',
-    hash: ''
-  },
-  writable: true
-});
-
 // Clean up mocks after each test
 afterEach(() => {
   jest.clearAllMocks();
