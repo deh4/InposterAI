@@ -69,15 +69,15 @@ export class FeedbackManager {
   /**
    * Set user expertise for current session
    */
-  setUserExpertise(level) {
+  async setUserExpertise(level) {
     this.currentSession.userExpertise = level;
-    this.storeSession(this.currentSession);
+    await this.storeSession(this.currentSession);
   }
 
   /**
    * Create comprehensive feedback record
    */
-  createFeedbackRecord(analysisData, systemInfo) {
+  async createFeedbackRecord(analysisData, systemInfo) {
     const record = {
       // Unique identifiers
       id: uuidv4(),
@@ -131,15 +131,15 @@ export class FeedbackManager {
       confidenceCalibration: null // Will be calculated when feedback is provided
     };
 
-    this.storeSession(this.currentSession);
+    await this.storeSession(this.currentSession);
     return record;
   }
 
   /**
    * Update feedback record with user input
    */
-  updateFeedback(recordId, feedbackData) {
-    const records = this.getFeedbackRecords();
+  async updateFeedback(recordId, feedbackData) {
+    const records = await this.getFeedbackRecords();
     const recordIndex = records.findIndex(r => r.id === recordId);
     
     if (recordIndex === -1) {
@@ -167,7 +167,7 @@ export class FeedbackManager {
     }
 
     records[recordIndex] = record;
-    this.storeFeedbackRecords(records);
+    await this.storeFeedbackRecords(records);
     
     return record;
   }
@@ -175,10 +175,10 @@ export class FeedbackManager {
   /**
    * Get all feedback records
    */
-  getFeedbackRecords() {
+  async getFeedbackRecords() {
     try {
-      const stored = localStorage.getItem(this.storageKey);
-      return stored ? JSON.parse(stored) : [];
+      const result = await chrome.storage.local.get(this.storageKey);
+      return result[this.storageKey] || [];
     } catch (error) {
       console.error('Failed to load feedback records:', error);
       return [];
@@ -188,11 +188,11 @@ export class FeedbackManager {
   /**
    * Store feedback records
    */
-  storeFeedbackRecords(records) {
+  async storeFeedbackRecords(records) {
     try {
       // Clean old records before storing
       const cleanedRecords = this.cleanOldRecords(records);
-      localStorage.setItem(this.storageKey, JSON.stringify(cleanedRecords));
+      await chrome.storage.local.set({ [this.storageKey]: cleanedRecords });
     } catch (error) {
       console.error('Failed to store feedback records:', error);
     }
@@ -335,37 +335,37 @@ export class FeedbackManager {
    * Session and settings management
    */
   
-  getStoredSession() {
+  async getStoredSession() {
     try {
-      const stored = localStorage.getItem(this.sessionKey);
-      return stored ? JSON.parse(stored) : null;
+      const result = await chrome.storage.local.get(this.sessionKey);
+      return result[this.sessionKey] || null;
     } catch (error) {
       console.error('Failed to load session:', error);
       return null;
     }
   }
 
-  storeSession(session) {
+  async storeSession(session) {
     try {
-      localStorage.setItem(this.sessionKey, JSON.stringify(session));
+      await chrome.storage.local.set({ [this.sessionKey]: session });
     } catch (error) {
       console.error('Failed to store session:', error);
     }
   }
 
-  getSettings() {
+  async getSettings() {
     try {
-      const stored = localStorage.getItem(this.settingsKey);
-      return stored ? JSON.parse(stored) : {};
+      const result = await chrome.storage.local.get(this.settingsKey);
+      return result[this.settingsKey] || {};
     } catch (error) {
       console.error('Failed to load settings:', error);
       return {};
     }
   }
 
-  storeSettings(settings) {
+  async storeSettings(settings) {
     try {
-      localStorage.setItem(this.settingsKey, JSON.stringify(settings));
+      await chrome.storage.local.set({ [this.settingsKey]: settings });
     } catch (error) {
       console.error('Failed to store settings:', error);
     }
@@ -374,8 +374,8 @@ export class FeedbackManager {
   /**
    * Export data for training/analysis
    */
-  exportFeedbackData() {
-    const records = this.getFeedbackRecords();
+  async exportFeedbackData() {
+    const records = await this.getFeedbackRecords();
     const exportData = {
       exportTime: new Date().toISOString(),
       recordCount: records.length,
@@ -438,7 +438,7 @@ export class FeedbackManager {
       }
 
       // Get existing record
-      const records = this.getFeedbackRecords();
+      const records = await this.getFeedbackRecords();
       const recordIndex = records.findIndex(r => r.id === recordId);
       
       if (recordIndex === -1) {
@@ -453,7 +453,7 @@ export class FeedbackManager {
       };
 
       // Save updated records
-      this.storeFeedbackRecords(records);
+      await this.storeFeedbackRecords(records);
 
       // Send to dashboard if available
       await this.sendFeedbackToDashboard(record);

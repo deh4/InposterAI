@@ -116,12 +116,12 @@ class BackgroundService {
     // Update badge with result
     this.updateBadge(analysis.likelihood);
 
-    // Send to dashboard if available
-    await this.sendToDashboard('analysis', {
-      ...analysis,
-      metadata: options.metadata,
-      sessionId: this.getSessionId()
-    });
+            // Send to dashboard if available
+        await this.sendToDashboard('analysis', {
+          ...analysis,
+          metadata: options.metadata,
+          sessionId: await this.getSessionId()
+        });
 
     return analysis;
   }
@@ -345,18 +345,25 @@ class BackgroundService {
     }
   }
 
-  getSessionId() {
+  async getSessionId() {
     // Generate or get existing session ID for today
     const today = new Date().toISOString().split('T')[0];
     const sessionKey = `session_${today}`;
     
-    let sessionId = localStorage.getItem(sessionKey);
-    if (!sessionId) {
-      sessionId = `session_${today}_${Math.random().toString(36).substr(2, 9)}`;
-      localStorage.setItem(sessionKey, sessionId);
+    try {
+      const result = await chrome.storage.local.get(sessionKey);
+      let sessionId = result[sessionKey];
+      
+      if (!sessionId) {
+        sessionId = `session_${today}_${Math.random().toString(36).substr(2, 9)}`;
+        await chrome.storage.local.set({ [sessionKey]: sessionId });
+      }
+      
+      return sessionId;
+    } catch (error) {
+      console.error('Failed to get session ID:', error);
+      return `session_${today}_fallback`;
     }
-    
-    return sessionId;
   }
 }
 
