@@ -8,98 +8,157 @@
 </head>
 <body>
   <div class="container">
+    <!-- Header -->
     <header class="header">
-      <div class="header-content">
-        <div class="logo">
-          <img src="../assets/icon-48.svg" alt="AI Detector" class="logo-icon">
-          <span class="logo-text">AI Content Detector</span>
-        </div>
-        <div class="connection-status" id="ollamaStatus">Checking...</div>
+      <div class="logo">
+        <img src="../assets/icon-48.png" alt="AI Detector" class="logo-icon">
+        <h1 class="title">AI Content Detector</h1>
+      </div>
+      <div class="status-indicator" id="ollamaStatus">
+        <span class="status-dot"></span>
+        <span class="status-text">Checking...</span>
       </div>
     </header>
 
-    <main class="main-content">
-      <!-- Analyzing State -->
-      <div class="state-container" id="analyzing">
-        <div class="analyzing-content">
-          <div class="spinner"></div>
-          <h3>Analyzing Content</h3>
-          <p class="analyzing-text">Using unified architecture for enhanced accuracy...</p>
-          <div class="progress-bar">
-            <div class="progress-fill"></div>
+    <!-- Main Content -->
+    <main class="content">
+      <!-- Current Page Analysis -->
+      <section class="analysis-section">
+        <div class="section-header">
+          <h2>Current Page</h2>
+          <button id="analyzeButton" class="btn btn-primary">
+            <span class="btn-icon">🔍</span>
+            Analyze
+          </button>
+        </div>
+        
+        <div id="analysisResult" class="analysis-result hidden">
+          <div class="result-header">
+            <div class="likelihood-score" id="likelihoodScore">
+              <span class="score-value">--</span>
+              <span class="score-label">AI Likelihood</span>
+            </div>
+            <div class="confidence-score" id="confidenceScore">
+              <span class="score-value">--</span>
+              <span class="score-label">Confidence</span>
+            </div>
+          </div>
+          
+          <div class="result-details">
+            <div class="reasoning" id="reasoning">
+              Analysis reasoning will appear here...
+            </div>
+            
+            <div class="statistical-breakdown" id="statisticalBreakdown">
+              <h4>📊 Statistical Analysis</h4>
+              <div class="stats-grid">
+                <div class="stat-item">
+                  <span class="stat-label">Perplexity</span>
+                  <span class="stat-value" id="perplexityValue">--</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">Burstiness</span>
+                  <span class="stat-value" id="burstinessValue">--</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">Vocabulary</span>
+                  <span class="stat-value" id="vocabularyValue">--</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">AI Indicators</span>
+                  <span class="stat-value" id="aiIndicatorsValue">--</span>
+                </div>
+              </div>
+              <div class="analysis-method" id="analysisMethod">
+                <small>🔬 Method: --</small>
+              </div>
+            </div>
+            
+            <div class="result-meta">
+              <span id="analysisTime">--</span>
+              <span id="cacheStatus" class="cache-indicator hidden">📁 Cached</span>
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- Results State -->
-      <div class="state-container hidden" id="results">
-        <!-- Results will be populated by the refactored popup script -->
-      </div>
-
-      <!-- Error State -->
-      <div class="state-container hidden" id="error">
-        <div class="error-content">
-          <div class="error-icon">⚠️</div>
-          <h3>Analysis Failed</h3>
-          <p class="error-message" id="errorMessage">An error occurred during analysis.</p>
-          <button class="btn-primary" id="retryButton">Try Again</button>
+        <div id="noContentMessage" class="no-content hidden">
+          <p>No analyzable content found on this page.</p>
+          <small>Try navigating to an article or blog post.</small>
         </div>
-      </div>
-    </main>
 
-    <!-- Action Buttons -->
-    <div class="action-buttons">
-      <button class="btn-primary" id="analyzeButton">
-        <span class="btn-icon">🔍</span>
-        Analyze Page
-      </button>
-      
-      <div class="quick-actions">
-        <button class="btn-secondary" id="settingsButton" title="Settings">
-          <span class="btn-icon">⚙️</span>
-        </button>
-        <button class="btn-secondary" id="dashboardButton" title="Analytics Dashboard">
-          <span class="btn-icon">📊</span>
-        </button>
-      </div>
-    </div>
+        <div id="errorMessage" class="error-message hidden">
+          <p id="errorText">An error occurred during analysis.</p>
+          <button id="retryButton" class="btn btn-secondary">Retry</button>
+        </div>
+      </section>
 
-    <!-- Settings Panel -->
-    <div class="settings-panel hidden" id="settingsPanel">
-      <div class="settings-header">
-        <h3>Settings</h3>
-        <button class="close-btn" id="closeSettings">&times;</button>
-      </div>
-      
-      <div class="settings-content">
-        <div class="setting-group">
-          <label for="modelSelect">Ollama Model</label>
-          <select id="modelSelect" class="setting-select">
-            <option value="">Loading models...</option>
-          </select>
+      <!-- Quick Actions -->
+      <section class="actions-section">
+        <div class="section-header">
+          <h3>Quick Actions</h3>
+        </div>
+        
+        <div class="quick-actions">
+          <button id="settingsButton" class="btn btn-secondary">
+            <span class="btn-icon">⚙️</span>
+            Settings
+          </button>
+          <button id="historyButton" class="btn btn-secondary">
+            <span class="btn-icon">📊</span>
+            Analytics Dashboard
+          </button>
+          <button id="helpButton" class="btn btn-secondary">
+            <span class="btn-icon">❓</span>
+            Help
+          </button>
+        </div>
+      </section>
+
+      <!-- Settings Panel (Initially Hidden) -->
+      <section id="settingsPanel" class="settings-panel hidden">
+        <div class="section-header">
+          <h3>Settings</h3>
+          <button id="closeSettings" class="btn btn-text">✕</button>
         </div>
         
         <div class="setting-group">
-          <label class="setting-checkbox">
-            <input type="checkbox" id="autoAnalyze">
+          <label class="setting-label">
+            <input type="checkbox" id="autoAnalyzeToggle">
             <span class="checkmark"></span>
             Auto-analyze pages
           </label>
         </div>
         
-        <div class="setting-group">
-          <label class="setting-checkbox">
-            <input type="checkbox" id="enableQuickAnalysis" checked>
-            <span class="checkmark"></span>
-            Enable quick analysis (Ctrl+Shift+A)
-          </label>
+                 <div class="setting-group">
+           <label class="setting-label" for="modelSelect">Model</label>
+           <select id="modelSelect" class="setting-select" title="Select AI model for analysis">
+             <option value="" disabled>Loading models...</option>
+           </select>
+           <div id="modelStatus" class="model-status">
+             <button id="refreshModels" class="btn btn-text">🔄 Refresh</button>
+           </div>
+         </div>
+         
+         <div class="setting-group">
+           <label class="setting-label" for="sensitivitySelect">Sensitivity</label>
+           <select id="sensitivitySelect" class="setting-select" title="Select analysis sensitivity level">
+             <option value="low">Low</option>
+             <option value="medium">Medium</option>
+             <option value="high">High</option>
+           </select>
+         </div>
+        
+        <div class="setting-actions">
+          <button id="saveSettings" class="btn btn-primary">Save</button>
+          <button id="resetSettings" class="btn btn-secondary">Reset</button>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
 
+    <!-- Footer -->
     <footer class="footer">
       <div class="footer-info">
-        <span class="version">v0.2.0 (Unified)</span>
+        <span class="version">v0.1.0</span>
         <span class="separator">•</span>
         <a href="#" id="aboutLink" class="footer-link">About</a>
         <span class="separator">•</span>
@@ -108,6 +167,6 @@
     </footer>
   </div>
 
-  <script type="module" src="popup-refactored.js"></script>
+  <script type="module" src="popup.js"></script>
 </body>
 </html> 

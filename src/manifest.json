@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "AI Content Detector",
-  "version": "0.2.0",
-  "description": "Detect AI-generated content using local Ollama models. Privacy-first analysis with unified architecture for better performance and reliability.",
+  "version": "0.1.0",
+  "description": "Detect AI-generated content using local Ollama models. Privacy-first analysis that runs completely on your machine.",
   
   "permissions": [
     "activeTab",
@@ -15,7 +15,6 @@
   "host_permissions": [
     "http://localhost:11434/*",
     "http://127.0.0.1:11434/*",
-    "http://localhost:3000/*",
     "https://*/*",
     "http://*/*"
   ],
@@ -27,7 +26,7 @@
   
   "content_scripts": [
     {
-      "matches": ["http://*/*", "https://*/*"],
+      "matches": ["<all_urls>"],
       "js": ["content/content.js"],
       "run_at": "document_idle",
       "all_frames": false
@@ -36,7 +35,7 @@
   
   "action": {
     "default_popup": "popup/popup.html",
-    "default_title": "AI Content Detector (Unified Architecture)",
+    "default_title": "AI Content Detector",
     "default_icon": {
       "16": "assets/icon-16.svg",
       "48": "assets/icon-48.svg",
@@ -53,12 +52,9 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "assets/*",
-        "shared/*"
+        "assets/*"
       ],
-      "matches": [
-        "<all_urls>"
-      ]
+      "matches": ["<all_urls>"]
     }
   ],
   
@@ -67,17 +63,5 @@
   },
   
   "author": "AI Content Detector Team",
-  "homepage_url": "https://github.com/yourusername/ai-content-detector-extension",
-  "short_name": "AI Detector",
-  "minimum_chrome_version": "88",
-  
-  "commands": {
-    "quick-analyze": {
-      "suggested_key": {
-        "default": "Ctrl+Shift+A",
-        "mac": "Command+Shift+A"
-      },
-      "description": "Quick analyze selected text"
-    }
-  }
+  "homepage_url": "https://github.com/yourusername/ai-content-detector-extension"
 } 
