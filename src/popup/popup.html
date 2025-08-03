@@ -49,6 +49,31 @@
               Analysis reasoning will appear here...
             </div>
             
+            <div class="statistical-breakdown" id="statisticalBreakdown">
+              <h4>📊 Statistical Analysis</h4>
+              <div class="stats-grid">
+                <div class="stat-item">
+                  <span class="stat-label">Perplexity</span>
+                  <span class="stat-value" id="perplexityValue">--</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">Burstiness</span>
+                  <span class="stat-value" id="burstinessValue">--</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">Vocabulary</span>
+                  <span class="stat-value" id="vocabularyValue">--</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">AI Indicators</span>
+                  <span class="stat-value" id="aiIndicatorsValue">--</span>
+                </div>
+              </div>
+              <div class="analysis-method" id="analysisMethod">
+                <small>🔬 Method: --</small>
+              </div>
+            </div>
+            
             <div class="result-meta">
               <span id="analysisTime">--</span>
               <span id="cacheStatus" class="cache-indicator hidden">📁 Cached</span>
@@ -109,10 +134,11 @@
                  <div class="setting-group">
            <label class="setting-label" for="modelSelect">Model</label>
            <select id="modelSelect" class="setting-select" title="Select AI model for analysis">
-             <option value="gemma3n:e4b">Gemma 3B (Recommended)</option>
-             <option value="gemma3:12b">Gemma 12B</option>
-             <option value="gemma3:27b">Gemma 27B</option>
+             <option value="" disabled>Loading models...</option>
            </select>
+           <div id="modelStatus" class="model-status">
+             <button id="refreshModels" class="btn btn-text">🔄 Refresh</button>
+           </div>
          </div>
          
          <div class="setting-group">

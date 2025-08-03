@@ -3,6 +3,10 @@
  * Extracts article content and handles analysis requests
  */
 
+import TextFormatter from '../shared/text-formatter.js';
+import FeedbackManager from '../shared/feedback-manager.js';
+import FeedbackUI from '../shared/feedback-ui.js';
+
 // Early exit for browser internal pages
 if (window.location.protocol === 'chrome:' || 
     window.location.protocol === 'opera:' || 
@@ -22,12 +26,18 @@ function initializeContentAnalyzer() {
       this.lastAnalyzedContent = null;
       this.setupMessageListener();
       this.setupPageObserver();
+      this.injectOverlayStyles();
+      
+      // Auto-analyze if enabled (disable for now to prevent errors)
+      // if (this.shouldAutoAnalyze()) {
+      //   this.scheduleAutoAnalysis();
+      // }
     }
 
     setupMessageListener() {
       chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         this.handleMessage(request, sender, sendResponse);
-        return true; // Keep message channel open for async response
+        return true; // Keep channel open for async responses
       });
     }
 
@@ -41,26 +51,41 @@ function initializeContentAnalyzer() {
           }
           case 'extractContent': {
             const content = this.extractArticleContent();
-            sendResponse({ success: true, data: content });
+            sendResponse({ content });
             break;
           }
           case 'analyzeCurrentPage': {
             const result = await this.analyzeCurrentPage();
             sendResponse({ success: true, data: result });
+            
+            // Show in-page badge after successful analysis
+            if (result && result.analysis) {
+              this.showInPageBadge(result.analysis);
+            }
             break;
           }
-          case 'autoAnalyze': {
-            // Triggered by background script for automatic analysis
-            await this.performAutoAnalysis();
+          case 'showQuickAnalysisResult': {
+            this.showQuickAnalysisOverlay(request.analysis, request.selectedText);
+            sendResponse({ success: true });
+            break;
+          }
+          case 'showQuickAnalysisLoading': {
+            console.log('Content script received showQuickAnalysisLoading:', request.selectedText.substring(0, 50));
+            this.showQuickAnalysisLoading(request.selectedText);
+            sendResponse({ success: true });
+            break;
+          }
+          case 'showQuickAnalysisError': {
+            this.showQuickAnalysisError(request.error);
             sendResponse({ success: true });
             break;
           }
           default:
-            sendResponse({ success: false, error: 'Unknown action' });
+            sendResponse({ error: 'Unknown action' });
         }
       } catch (error) {
         console.error('Content script error:', error);
-        sendResponse({ success: false, error: error.message });
+        sendResponse({ error: error.message });
       }
     }
 
@@ -218,8 +243,8 @@ function initializeContentAnalyzer() {
           acceptNode: (node) => {
             // Skip navigation, ads, etc.
             const tagName = node.tagName.toLowerCase();
-            const className = node.className.toLowerCase();
-            const id = node.id.toLowerCase();
+            const className = (node.className && typeof node.className === 'string') ? node.className.toLowerCase() : '';
+            const id = (node.id && typeof node.id === 'string') ? node.id.toLowerCase() : '';
             
             if (['script', 'style', 'nav', 'header', 'footer'].includes(tagName)) {
               return NodeFilter.FILTER_REJECT;
@@ -378,6 +403,799 @@ function initializeContentAnalyzer() {
       // Check for minimum content
       const bodyText = document.body.textContent.trim();
       return bodyText.length > 500;
+    }
+
+    showQuickAnalysisOverlay(analysis, selectedText) {
+      // Remove any existing overlay
+      this.removeQuickAnalysisOverlay();
+
+      // Create overlay container
+      const overlay = document.createElement('div');
+      overlay.id = 'ai-detector-quick-overlay';
+      overlay.className = 'ai-detector-overlay';
+      
+      // Get selection position for positioning
+      const selection = window.getSelection();
+      const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+      let rect = { top: 0, left: 0, width: 0, height: 0 };
+      
+      if (range) {
+        const rangeRect = range.getBoundingClientRect();
+        rect = {
+          top: rangeRect.bottom + window.scrollY,
+          left: rangeRect.left + window.scrollX,
+          width: rangeRect.width,
+          height: rangeRect.height
+        };
+      }
+
+      // Position overlay
+      overlay.style.position = 'absolute';
+      overlay.style.top = `${rect.top + 10}px`;
+      overlay.style.left = `${Math.max(10, rect.left)}px`;
+      overlay.style.zIndex = '10000';
+      overlay.style.maxWidth = '300px';
+
+      // Create overlay content
+      const content = `
+        <div class="ai-detector-overlay-content">
+          <div class="ai-detector-header">
+            <span class="ai-detector-title">🤖 AI Detection</span>
+            <button class="ai-detector-close" onclick="this.closest('.ai-detector-overlay').remove()">×</button>
+          </div>
+          <div class="ai-detector-result">
+            <div class="ai-detector-scores">
+              <div class="ai-detector-score ai-likelihood-${this.getLikelihoodClass(analysis.likelihood)}">
+                <span class="score-value">${Math.round(analysis.likelihood)}%</span>
+                <span class="score-label">AI Likelihood</span>
+              </div>
+              <div class="ai-detector-score">
+                <span class="score-value">${Math.round(analysis.confidence)}%</span>
+                <span class="score-label">Confidence</span>
+              </div>
+            </div>
+            <div class="ai-detector-reasoning">
+              ${TextFormatter.formatReasoning(analysis.reasoning)}
+            </div>
+            <div class="ai-detector-text-preview">
+              "${selectedText.substring(0, 100)}${selectedText.length > 100 ? '...' : ''}"
+            </div>
+          </div>
+        </div>
+      `;
+
+      overlay.innerHTML = content;
+      document.body.appendChild(overlay);
+
+      // Auto-remove after 10 seconds
+      setTimeout(() => {
+        this.removeQuickAnalysisOverlay();
+      }, 10000);
+    }
+
+    showQuickAnalysisLoading(selectedText) {
+      console.log('showQuickAnalysisLoading called with text:', selectedText.substring(0, 50));
+      
+      // Remove any existing overlay
+      this.removeQuickAnalysisOverlay();
+      console.log('Existing overlay removed');
+
+      // Get selection position for positioning
+      const selection = window.getSelection();
+      const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+      let rect = { top: 0, left: 0, width: 0, height: 0 };
+      
+      if (range) {
+        const rangeRect = range.getBoundingClientRect();
+        rect = {
+          top: rangeRect.bottom + window.scrollY,
+          left: rangeRect.left + window.scrollX,
+          width: rangeRect.width,
+          height: rangeRect.height
+        };
+        console.log('Selection position:', rect);
+      } else {
+        console.log('No selection range found, using center positioning');
+      }
+
+      // Create loading overlay
+      const overlay = document.createElement('div');
+      overlay.id = 'ai-detector-quick-overlay';
+      overlay.className = 'ai-detector-overlay ai-detector-loading';
+      
+      // Position near the selection or center if no selection
+      if (range && rect.top > 0) {
+        overlay.style.position = 'absolute';
+        overlay.style.top = `${rect.top + 10}px`;
+        overlay.style.left = `${Math.max(10, rect.left)}px`;
+      } else {
+        overlay.style.position = 'fixed';
+        overlay.style.top = '50%';
+        overlay.style.left = '50%';
+        overlay.style.transform = 'translate(-50%, -50%)';
+      }
+      
+      overlay.style.zIndex = '10000';
+      overlay.style.maxWidth = '280px';
+
+      const content = `
+        <div class="ai-detector-overlay-content">
+          <div class="ai-detector-header">
+            <span class="ai-detector-title">🤖 Analyzing Text...</span>
+            <button class="ai-detector-close" onclick="this.closest('.ai-detector-overlay').remove()">×</button>
+          </div>
+          <div class="ai-detector-loading-body">
+            <div class="ai-detector-progress-bar">
+              <div class="ai-detector-progress-fill"></div>
+            </div>
+            <div class="ai-detector-loading-text">
+              Running AI detection analysis...
+            </div>
+            <div class="ai-detector-text-preview">
+              "${selectedText.substring(0, 80)}${selectedText.length > 80 ? '...' : ''}"
+            </div>
+          </div>
+        </div>
+      `;
+
+      overlay.innerHTML = content;
+      document.body.appendChild(overlay);
+      console.log('Loading overlay added to document body');
+    }
+
+    showQuickAnalysisError(error) {
+      // Remove any existing overlay
+      this.removeQuickAnalysisOverlay();
+
+      // Create error overlay
+      const overlay = document.createElement('div');
+      overlay.id = 'ai-detector-quick-overlay';
+      overlay.className = 'ai-detector-overlay ai-detector-error';
+      
+      overlay.style.position = 'fixed';
+      overlay.style.top = '20px';
+      overlay.style.right = '20px';
+      overlay.style.zIndex = '10000';
+      overlay.style.maxWidth = '300px';
+
+      const content = `
+        <div class="ai-detector-overlay-content">
+          <div class="ai-detector-header">
+            <span class="ai-detector-title">⚠️ Analysis Failed</span>
+            <button class="ai-detector-close" onclick="this.closest('.ai-detector-overlay').remove()">×</button>
+          </div>
+          <div class="ai-detector-error-message">
+            ${error}
+          </div>
+        </div>
+      `;
+
+      overlay.innerHTML = content;
+      document.body.appendChild(overlay);
+
+      // Auto-remove after 5 seconds
+      setTimeout(() => {
+        this.removeQuickAnalysisOverlay();
+      }, 5000);
+    }
+
+    removeQuickAnalysisOverlay() {
+      const existing = document.getElementById('ai-detector-quick-overlay');
+      if (existing) {
+        existing.remove();
+      }
+    }
+
+    getLikelihoodClass(likelihood) {
+      if (likelihood > 70) return 'high';
+      if (likelihood > 40) return 'medium';
+      return 'low';
+    }
+
+    injectOverlayStyles() {
+      // Only inject once
+      if (document.getElementById('ai-detector-overlay-styles')) {
+        return;
+      }
+
+      const style = document.createElement('style');
+      style.id = 'ai-detector-overlay-styles';
+      style.textContent = `
+        /* AI Detector Quick Analysis Overlay Styles */
+        .ai-detector-overlay {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+          font-size: 13px !important;
+          line-height: 1.4 !important;
+          background: white !important;
+          border: 1px solid #e1e5e9 !important;
+          border-radius: 8px !important;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
+          max-width: 300px !important;
+          z-index: 10000 !important;
+          animation: ai-detector-fadeIn 0.2s ease-out !important;
+        }
+        
+        .ai-detector-overlay-content {
+          padding: 0 !important;
+        }
+        
+        .ai-detector-header {
+          display: flex !important;
+          justify-content: space-between !important;
+          align-items: center !important;
+          padding: 12px 16px !important;
+          background: #f8f9fa !important;
+          border-bottom: 1px solid #e1e5e9 !important;
+          border-radius: 8px 8px 0 0 !important;
+        }
+        
+        .ai-detector-title {
+          font-weight: 600 !important;
+          color: #1a1a1a !important;
+          font-size: 14px !important;
+          margin: 0 !important;
+        }
+        
+        .ai-detector-close {
+          background: none !important;
+          border: none !important;
+          font-size: 16px !important;
+          color: #6b7280 !important;
+          cursor: pointer !important;
+          padding: 0 !important;
+          width: 20px !important;
+          height: 20px !important;
+          border-radius: 4px !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+        }
+        
+        .ai-detector-close:hover {
+          background: #e5e7eb !important;
+          color: #374151 !important;
+        }
+        
+        .ai-detector-result {
+          padding: 16px !important;
+        }
+        
+        .ai-detector-scores {
+          display: flex !important;
+          gap: 12px !important;
+          margin-bottom: 12px !important;
+        }
+        
+        .ai-detector-score {
+          flex: 1 !important;
+          text-align: center !important;
+          padding: 8px !important;
+          background: #f8f9fa !important;
+          border-radius: 6px !important;
+        }
+        
+        .ai-detector-score .score-value {
+          display: block !important;
+          font-size: 18px !important;
+          font-weight: 700 !important;
+          margin-bottom: 2px !important;
+        }
+        
+        .ai-detector-score .score-label {
+          display: block !important;
+          font-size: 11px !important;
+          color: #6b7280 !important;
+          text-transform: uppercase !important;
+          letter-spacing: 0.5px !important;
+        }
+        
+        .ai-likelihood-high .score-value {
+          color: #dc2626 !important;
+        }
+        
+        .ai-likelihood-medium .score-value {
+          color: #d97706 !important;
+        }
+        
+        .ai-likelihood-low .score-value {
+          color: #059669 !important;
+        }
+        
+        .ai-detector-reasoning {
+          font-size: 12px !important;
+          color: #374151 !important;
+          margin-bottom: 12px !important;
+          line-height: 1.5 !important;
+        }
+
+        .reasoning-section {
+          margin-bottom: 8px !important;
+        }
+
+        .reasoning-section:last-child {
+          margin-bottom: 0 !important;
+        }
+
+        .reasoning-header {
+          font-size: 11px !important;
+          font-weight: 600 !important;
+          color: #1f2937 !important;
+          margin: 0 0 4px 0 !important;
+          text-transform: uppercase !important;
+          letter-spacing: 0.5px !important;
+        }
+
+        .reasoning-content {
+          margin: 0 !important;
+          font-size: 12px !important;
+          line-height: 1.4 !important;
+          color: #374151 !important;
+        }
+
+        .indicator-item {
+          display: inline-block !important;
+          background: #f3f4f6 !important;
+          padding: 2px 6px !important;
+          border-radius: 4px !important;
+          font-size: 11px !important;
+          margin: 0 2px !important;
+          border: 1px solid #e5e7eb !important;
+        }
+
+        .reasoning-fallback {
+          font-style: italic !important;
+          color: #9ca3af !important;
+          margin: 0 !important;
+        }
+        
+        .ai-detector-text-preview {
+          font-size: 11px !important;
+          color: #6b7280 !important;
+          font-style: italic !important;
+          background: #f8f9fa !important;
+          padding: 8px !important;
+          border-radius: 4px !important;
+          border-left: 3px solid #e1e5e9 !important;
+        }
+        
+        .ai-detector-error {
+          background: #fef2f2 !important;
+          border-color: #fecaca !important;
+        }
+        
+        .ai-detector-error .ai-detector-header {
+          background: #fee2e2 !important;
+          border-bottom-color: #fecaca !important;
+        }
+        
+        .ai-detector-error-message {
+          padding: 16px !important;
+          color: #dc2626 !important;
+          font-size: 12px !important;
+        }
+        
+        .ai-detector-loading {
+          background: #f9fafb !important;
+          border: 1px solid #e5e7eb !important;
+          border-radius: 8px !important;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1) !important;
+        }
+
+        .ai-detector-loading .ai-detector-header {
+          background: #f3f4f6 !important;
+          border-bottom: 1px solid #e5e7eb !important;
+        }
+
+        .ai-detector-loading .ai-detector-title {
+          color: #374151 !important;
+        }
+
+        .ai-detector-loading-body {
+          padding: 16px !important;
+        }
+
+        .ai-detector-progress-bar {
+          width: 100% !important;
+          height: 4px !important;
+          background: #e5e7eb !important;
+          border-radius: 2px !important;
+          margin-bottom: 12px !important;
+          overflow: hidden !important;
+        }
+
+        .ai-detector-progress-fill {
+          height: 100% !important;
+          background: linear-gradient(90deg, #3b82f6, #8b5cf6, #3b82f6) !important;
+          background-size: 200% 100% !important;
+          border-radius: 2px !important;
+          width: 0% !important;
+          animation: ai-detector-progress 2s ease-in-out infinite, ai-detector-gradient 1.5s ease-in-out infinite !important;
+        }
+
+        .ai-detector-loading-text {
+          font-size: 12px !important;
+          color: #6b7280 !important;
+          text-align: center !important;
+          margin-bottom: 12px !important;
+        }
+
+        @keyframes ai-detector-progress {
+          0% { width: 0%; }
+          50% { width: 70%; }
+          100% { width: 100%; }
+        }
+
+        @keyframes ai-detector-gradient {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+        
+        @keyframes ai-detector-fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        /* In-Page Badge Styles */
+        .ai-detector-page-badge {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+          background: white !important;
+          border: 2px solid #e5e7eb !important;
+          border-radius: 12px !important;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
+          min-width: 120px !important;
+          max-width: 300px !important;
+          transition: all 0.3s ease !important;
+          overflow: hidden !important;
+        }
+
+        .ai-detector-page-badge.badge-high-risk {
+          border-color: #ef4444 !important;
+          background: linear-gradient(135deg, #fef2f2, white) !important;
+        }
+
+        .ai-detector-page-badge.badge-medium-risk {
+          border-color: #f59e0b !important;
+          background: linear-gradient(135deg, #fffbeb, white) !important;
+        }
+
+        .ai-detector-page-badge.badge-low-risk {
+          border-color: #10b981 !important;
+          background: linear-gradient(135deg, #f0fdf4, white) !important;
+        }
+
+        .ai-detector-page-badge.badge-loading {
+          border-color: #6b7280 !important;
+          background: linear-gradient(135deg, #f9fafb, white) !important;
+        }
+
+        .ai-detector-page-badge.expanded {
+          max-width: 350px !important;
+        }
+
+        .ai-detector-page-badge.minimized {
+          transform: scale(0.9) !important;
+          opacity: 0.7 !important;
+        }
+
+        .badge-content {
+          display: flex !important;
+          align-items: center !important;
+          padding: 12px !important;
+          cursor: pointer !important;
+        }
+
+        .badge-icon {
+          font-size: 20px !important;
+          margin-right: 8px !important;
+          line-height: 1 !important;
+        }
+
+        .badge-info {
+          flex: 1 !important;
+          min-width: 0 !important;
+        }
+
+        .badge-score {
+          font-size: 16px !important;
+          font-weight: 700 !important;
+          color: #1f2937 !important;
+          line-height: 1 !important;
+          margin-bottom: 2px !important;
+        }
+
+        .badge-label {
+          font-size: 11px !important;
+          color: #6b7280 !important;
+          text-transform: uppercase !important;
+          letter-spacing: 0.5px !important;
+          line-height: 1 !important;
+        }
+
+        .badge-expand {
+          padding: 4px !important;
+          margin-left: 8px !important;
+          cursor: pointer !important;
+          border-radius: 4px !important;
+          transition: background 0.2s ease !important;
+        }
+
+        .badge-expand:hover {
+          background: #f3f4f6 !important;
+        }
+
+        .expand-icon {
+          font-size: 12px !important;
+          color: #6b7280 !important;
+          display: block !important;
+          line-height: 1 !important;
+        }
+
+        .badge-details {
+          border-top: 1px solid #e5e7eb !important;
+          padding: 12px !important;
+          background: #f9fafb !important;
+        }
+
+        .badge-details.hidden {
+          display: none !important;
+        }
+
+        .badge-detail-item {
+          display: flex !important;
+          justify-content: space-between !important;
+          align-items: center !important;
+          margin-bottom: 6px !important;
+        }
+
+        .badge-detail-item:last-child {
+          margin-bottom: 0 !important;
+        }
+
+        .detail-label {
+          font-size: 11px !important;
+          color: #6b7280 !important;
+          font-weight: 500 !important;
+        }
+
+        .detail-value {
+          font-size: 11px !important;
+          color: #1f2937 !important;
+          font-weight: 600 !important;
+        }
+
+        .badge-reasoning {
+          margin: 8px 0 !important;
+          font-size: 11px !important;
+          color: #4b5563 !important;
+          line-height: 1.4 !important;
+          max-height: 60px !important;
+          overflow-y: auto !important;
+        }
+
+        .badge-actions {
+          display: flex !important;
+          gap: 6px !important;
+          margin-top: 8px !important;
+          justify-content: flex-end !important;
+        }
+
+        .badge-btn {
+          background: white !important;
+          border: 1px solid #d1d5db !important;
+          border-radius: 6px !important;
+          padding: 6px 8px !important;
+          font-size: 12px !important;
+          cursor: pointer !important;
+          transition: all 0.2s ease !important;
+          line-height: 1 !important;
+        }
+
+        .badge-btn:hover {
+          background: #f3f4f6 !important;
+          border-color: #9ca3af !important;
+        }
+
+        .badge-btn-analyze:hover {
+          background: #dbeafe !important;
+          border-color: #3b82f6 !important;
+        }
+
+        .badge-btn-close:hover {
+          background: #fee2e2 !important;
+          border-color: #ef4444 !important;
+        }
+      `;
+      
+      document.head.appendChild(style);
+    }
+
+    shouldAutoAnalyze() {
+      // For now, disable auto-analysis to prevent errors
+      return false;
+    }
+
+    scheduleAutoAnalysis() {
+      // Placeholder for future auto-analysis feature
+      console.log('Auto-analysis scheduled (not implemented yet)');
+    }
+
+    showInPageBadge(analysis) {
+      // Remove any existing badge
+      this.removeInPageBadge();
+
+      // Create badge container
+      const badge = document.createElement('div');
+      badge.id = 'ai-detector-page-badge';
+      badge.className = `ai-detector-page-badge ${this.getBadgeClass(analysis.likelihood)}`;
+      
+      // Position badge
+      badge.style.position = 'fixed';
+      badge.style.top = '20px';
+      badge.style.right = '20px';
+      badge.style.zIndex = '9999';
+      badge.style.cursor = 'pointer';
+
+      // Create badge content
+      const content = `
+        <div class="badge-content">
+          <div class="badge-icon">
+            ${this.getBadgeIcon(analysis.likelihood)}
+          </div>
+          <div class="badge-info">
+            <div class="badge-score">${Math.round(analysis.likelihood)}%</div>
+            <div class="badge-label">AI Likely</div>
+          </div>
+          <div class="badge-expand" title="Click for details">
+            <span class="expand-icon">▼</span>
+          </div>
+        </div>
+        <div class="badge-details hidden">
+          <div class="badge-detail-item">
+            <span class="detail-label">Confidence:</span>
+            <span class="detail-value">${Math.round(analysis.confidence)}%</span>
+          </div>
+          <div class="badge-detail-item">
+            <span class="detail-label">Method:</span>
+            <span class="detail-value">${analysis.method || 'ensemble'}</span>
+          </div>
+          <div class="badge-reasoning">
+            ${TextFormatter.formatReasoningCompact(analysis.reasoning)}
+          </div>
+          <div class="badge-actions">
+            <button class="badge-btn badge-btn-analyze" title="Re-analyze">🔄</button>
+            <button class="badge-btn badge-btn-close" title="Close">✕</button>
+          </div>
+        </div>
+      `;
+
+      badge.innerHTML = content;
+
+      // Add event listeners
+      this.addBadgeEventListeners(badge, analysis);
+
+      // Add to page
+      document.body.appendChild(badge);
+
+      // Auto-collapse after 5 seconds
+      setTimeout(() => {
+        const expandIcon = badge.querySelector('.expand-icon');
+        if (expandIcon && !expandIcon.textContent.includes('▲')) {
+          // Only auto-collapse if not already expanded
+          this.minimizeBadge(badge);
+        }
+      }, 5000);
+    }
+
+    addBadgeEventListeners(badge, analysis) {
+      // Toggle details on click
+      const expandArea = badge.querySelector('.badge-expand');
+      const content = badge.querySelector('.badge-content');
+      
+      const toggleDetails = () => {
+        const details = badge.querySelector('.badge-details');
+        const expandIcon = badge.querySelector('.expand-icon');
+        
+        if (details.classList.contains('hidden')) {
+          details.classList.remove('hidden');
+          expandIcon.textContent = '▲';
+          badge.classList.add('expanded');
+        } else {
+          details.classList.add('hidden');
+          expandIcon.textContent = '▼';
+          badge.classList.remove('expanded');
+        }
+      };
+
+      expandArea.addEventListener('click', toggleDetails);
+      content.addEventListener('click', toggleDetails);
+
+      // Re-analyze button
+      const analyzeBtn = badge.querySelector('.badge-btn-analyze');
+      analyzeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.reAnalyzePage();
+      });
+
+      // Close button
+      const closeBtn = badge.querySelector('.badge-btn-close');
+      closeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.removeInPageBadge();
+      });
+    }
+
+    removeInPageBadge() {
+      const existing = document.getElementById('ai-detector-page-badge');
+      if (existing) {
+        existing.remove();
+      }
+    }
+
+    minimizeBadge(badge) {
+      if (!badge) return;
+      
+      badge.classList.add('minimized');
+      setTimeout(() => {
+        badge.classList.remove('minimized');
+      }, 3000);
+    }
+
+    getBadgeClass(likelihood) {
+      if (likelihood > 70) return 'badge-high-risk';
+      if (likelihood > 40) return 'badge-medium-risk';
+      return 'badge-low-risk';
+    }
+
+    getBadgeIcon(likelihood) {
+      if (likelihood > 70) return '🤖';
+      if (likelihood > 40) return '⚠️';
+      return '✅';
+    }
+
+    async reAnalyzePage() {
+      try {
+        this.removeInPageBadge();
+        
+        // Show temporary loading badge
+        const loadingBadge = document.createElement('div');
+        loadingBadge.id = 'ai-detector-page-badge';
+        loadingBadge.className = 'ai-detector-page-badge badge-loading';
+        loadingBadge.style.position = 'fixed';
+        loadingBadge.style.top = '20px';
+        loadingBadge.style.right = '20px';
+        loadingBadge.style.zIndex = '9999';
+        loadingBadge.innerHTML = `
+          <div class="badge-content">
+            <div class="badge-icon">🔄</div>
+            <div class="badge-info">
+              <div class="badge-score">...</div>
+              <div class="badge-label">Analyzing</div>
+            </div>
+          </div>
+        `;
+        
+        document.body.appendChild(loadingBadge);
+
+        // Trigger re-analysis
+        const result = await this.analyzeCurrentPage();
+        
+        // Remove loading badge and show results
+        loadingBadge.remove();
+        
+        if (result && result.analysis) {
+          this.showInPageBadge(result.analysis);
+        }
+      } catch (error) {
+        console.error('Re-analysis failed:', error);
+        this.removeInPageBadge();
+      }
     }
   }
 

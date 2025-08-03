@@ -9,25 +9,39 @@ class BackgroundService {
   constructor() {
     this.ollamaClient = new OllamaClient();
     this.analysisCache = new Map();
-    this.setupEventListeners();
+    this.cacheTimeout = 30 * 60 * 1000; // 30 minutes
+    this.setupMessageHandlers();
+    this.setupContextMenus();
   }
 
-  setupEventListeners() {
-    // Handle messages from content scripts and popup
+  setupContextMenus() {
+    chrome.contextMenus.create({
+      id: 'analyzeSelectedText',
+      title: 'Quick Analyze with AI Detector',
+      contexts: ['selection']
+    });
+  }
+
+  setupMessageHandlers() {
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       this.handleMessage(request, sender, sendResponse);
-      return true; // Keep message channel open for async response
+      return true; // Keep message channel open for async responses
     });
 
-    // Handle extension installation
+    // Context menu click handler
+    chrome.contextMenus.onClicked.addListener((info, tab) => {
+      this.handleContextMenuClick(info, tab);
+    });
+
+    // Extension installation
     chrome.runtime.onInstalled.addListener((details) => {
       this.handleInstallation(details);
     });
 
-    // Handle tab updates to potentially analyze new content
+    // Badge management
     chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-      if (changeInfo.status === 'complete' && tab.url) {
-        this.handleTabUpdate(tabId, tab);
+      if (changeInfo.status === 'complete') {
+        this.updateBadgeForTab(tabId);
       }
     });
   }
@@ -58,6 +72,11 @@ class BackgroundService {
         case 'getSettings': {
           const settings = await this.getSettings();
           sendResponse({ success: true, data: settings });
+          break;
+        }
+        case 'getAvailableModels': {
+          const models = await this.getAvailableModels();
+          sendResponse({ success: true, models: models });
           break;
         }
         default:
@@ -153,6 +172,16 @@ class BackgroundService {
     };
   }
 
+  async getAvailableModels() {
+    try {
+      const models = await this.ollamaClient.getModels();
+      return models;
+    } catch (error) {
+      console.error('Failed to get available models:', error);
+      return [];
+    }
+  }
+
   handleInstallation(details) {
     if (details.reason === 'install') {
       console.log('AI Content Detector installed');
@@ -166,6 +195,67 @@ class BackgroundService {
     } else if (details.reason === 'update') {
       console.log('AI Content Detector updated to version', chrome.runtime.getManifest().version);
     }
+  }
+
+  async handleContextMenuClick(info, tab) {
+    if (info.menuItemId === 'analyzeSelectedText' && info.selectionText) {
+      try {
+        console.log('Context menu analysis started for text:', info.selectionText.substring(0, 50));
+        
+        // Show loading indicator immediately
+        try {
+          await chrome.tabs.sendMessage(tab.id, {
+            action: 'showQuickAnalysisLoading',
+            selectedText: info.selectionText
+          });
+          console.log('Loading indicator sent successfully');
+        } catch (loadingError) {
+          console.warn('Failed to show loading indicator:', loadingError);
+          // Continue with analysis even if loading indicator fails
+        }
+
+        // Analyze the selected text
+        const analysis = await this.analyzeText(info.selectionText, { quickAnalysis: true });
+        console.log('Analysis completed:', analysis);
+        
+        // Send result to content script for overlay display
+        try {
+          await chrome.tabs.sendMessage(tab.id, {
+            action: 'showQuickAnalysisResult',
+            analysis: analysis,
+            selectedText: info.selectionText
+          });
+          console.log('Results sent successfully');
+        } catch (resultError) {
+          console.error('Failed to send results:', resultError);
+        }
+      } catch (error) {
+        console.error('Context menu analysis failed:', error);
+        
+        // Show error to user
+        try {
+          await chrome.tabs.sendMessage(tab.id, {
+            action: 'showQuickAnalysisError',
+            error: error.message
+          });
+        } catch (errorMsgError) {
+          console.error('Failed to send error message:', errorMsgError);
+        }
+      }
+    }
+  }
+
+  async updateBadgeForTab(tabId) {
+    // Disable automatic badge updates for now - they should be triggered after analysis
+    // const tab = await chrome.tabs.get(tabId);
+    // if (tab && tab.url) {
+    //   try {
+    //     const analysis = await this.analyzeText(tab.url, { quickAnalysis: true });
+    //     this.updateBadge(analysis.likelihood);
+    //   } catch (error) {
+    //     console.warn('Failed to update badge for tab:', error);
+    //   }
+    // }
   }
 
   async handleTabUpdate(tabId, tab) {

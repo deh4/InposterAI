@@ -2,6 +2,8 @@
  * Ollama API Client for local AI text analysis
  */
 
+import StatisticalAnalyzer from './statistical-analyzer.js';
+
 const OLLAMA_BASE_URL = 'http://localhost:11434';
 const DEFAULT_MODEL = 'gemma3n:e4b';
 
@@ -9,6 +11,7 @@ export class OllamaClient {
   constructor(model = DEFAULT_MODEL) {
     this.model = model;
     this.baseUrl = OLLAMA_BASE_URL;
+    this.statisticalAnalyzer = new StatisticalAnalyzer();
   }
 
   /**
@@ -37,29 +40,65 @@ export class OllamaClient {
   }
 
   /**
-   * Analyze text for AI generation likelihood
+   * Analyze text for AI generation likelihood using ensemble approach
    */
   async analyzeText(text) {
     if (!text || text.trim().length === 0) {
       throw new Error('Text cannot be empty');
     }
 
-    const prompt = `Analyze the following text to determine if it was likely written by AI or by a human. Consider factors like:
-- Writing style and flow
-- Vocabulary and phrase patterns
-- Sentence structure consistency
-- Use of filler words and natural imperfections
-- Topic expertise and nuance
+    // Perform statistical analysis first
+    console.log('Running statistical analysis...');
+    const statisticalStats = this.statisticalAnalyzer.analyze(text);
 
-Text to analyze:
-"${text}"
+    // Get LLM analysis
+    console.log('Running LLM analysis...');
+    const llmAnalysis = await this.getLLMAnalysis(text);
 
-Respond with a JSON object containing:
-- "likelihood": number between 0-100 (0=definitely human, 100=definitely AI)
-- "confidence": number between 0-100 (how confident you are in this assessment)
-- "reasoning": brief explanation of key factors
+    // Combine using ensemble scoring
+    const ensembleResult = this.statisticalAnalyzer.calculateEnsembleScore(
+      statisticalStats, 
+      llmAnalysis
+    );
 
-Response:`;
+    return {
+      likelihood: ensembleResult.likelihood,
+      confidence: ensembleResult.confidence,
+      reasoning: this.generateDetailedReasoning(llmAnalysis, statisticalStats, ensembleResult),
+      rawResponse: llmAnalysis.rawResponse,
+      statisticalBreakdown: ensembleResult.breakdown,
+      llmAnalysis: llmAnalysis,
+      method: 'ensemble'
+    };
+  }
+
+  /**
+   * Get LLM analysis from Ollama
+   */
+  async getLLMAnalysis(text) {
+    const prompt = `You are an expert AI content detector. Analyze the following text to determine if it was written by AI or a human.
+
+ANALYSIS CRITERIA:
+1. **Linguistic Patterns**: Look for AI-typical phrases like "Furthermore," "Moreover," "It's important to note," "In conclusion"
+2. **Writing Style**: Check for overly formal tone, lack of personal voice, generic expressions
+3. **Content Flow**: Examine if transitions are too smooth/formulaic vs. natural human irregularities  
+4. **Vocabulary**: Assess if word choice seems diverse/natural vs. repetitive/formulaic
+5. **Sentence Structure**: Evaluate if sentences are too uniform vs. natural human variation
+6. **Specificity**: Check for vague generalities vs. concrete details/personal insights
+7. **Imperfections**: Look for natural human quirks, typos, or conversational elements
+
+TEXT TO ANALYZE:
+"${text.substring(0, 2000)}" ${text.length > 2000 ? '...[truncated]' : ''}
+
+RESPOND WITH JSON:
+{
+  "likelihood": [0-100 number, where 0=definitely human, 100=definitely AI],
+  "confidence": [0-100 number, your confidence in this assessment],
+  "reasoning": "Concise explanation of 2-3 key factors that led to your assessment",
+  "key_indicators": ["list", "of", "specific", "evidence"]
+}
+
+Be especially careful of false positives - many human writers use formal language. Focus on patterns that are distinctly AI-like.`;
 
     try {
       console.log('Making Ollama API request to:', `${this.baseUrl}/api/generate`);
@@ -75,6 +114,11 @@ Response:`;
           model: this.model,
           prompt: prompt,
           stream: false,
+          options: {
+            temperature: 0.1, // Lower temperature for more consistent analysis
+            top_p: 0.9,
+            repeat_penalty: 1.1
+          }
         }),
       });
 
@@ -118,6 +162,7 @@ Response:`;
           likelihood: Math.min(100, Math.max(0, parsed.likelihood || 0)),
           confidence: Math.min(100, Math.max(0, parsed.confidence || 0)),
           reasoning: parsed.reasoning || 'No reasoning provided',
+          keyIndicators: parsed.key_indicators || [],
           rawResponse: response,
         };
       }
@@ -154,8 +199,50 @@ Response:`;
       likelihood: Math.min(100, Math.max(0, likelihood)),
       confidence: Math.min(100, Math.max(0, confidence)),
       reasoning: 'Fallback analysis - structured response parsing failed',
+      keyIndicators: ['fallback-analysis'],
       rawResponse: response,
     };
+  }
+
+  /**
+   * Generate detailed reasoning combining LLM and statistical analysis
+   */
+  generateDetailedReasoning(llmAnalysis, statisticalStats, ensembleResult) {
+    const parts = [];
+    
+    // Start with LLM reasoning
+    if (llmAnalysis && llmAnalysis.reasoning) {
+      parts.push(`LLM Analysis: ${llmAnalysis.reasoning}`);
+    }
+
+    // Add key statistical indicators
+    const statIndicators = [];
+    if (statisticalStats.perplexityScore > 60) {
+      statIndicators.push('high perplexity (predictable patterns)');
+    }
+    if (statisticalStats.burstinessScore > 60) {
+      statIndicators.push('low sentence length variation');
+    }
+    if (statisticalStats.aiIndicatorScore > 30) {
+      statIndicators.push('AI-typical phrases detected');
+    }
+    if (statisticalStats.vocabularyDiversity > 60) {
+      statIndicators.push('repetitive vocabulary');
+    }
+
+    if (statIndicators.length > 0) {
+      parts.push(`Statistical indicators: ${statIndicators.join(', ')}`);
+    }
+
+    // Add confidence note
+    const agreement = Math.abs(llmAnalysis.likelihood - (ensembleResult.statisticalScore || 50));
+    if (agreement < 20) {
+      parts.push('High confidence: LLM and statistical analysis agree');
+    } else if (agreement > 40) {
+      parts.push('Moderate confidence: Some disagreement between analysis methods');
+    }
+
+    return parts.join('. ') || 'Analysis completed using ensemble approach';
   }
 
   /**
