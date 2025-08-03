@@ -12,8 +12,10 @@
   ],
   
   "host_permissions": [
-    "http://localhost/*",
-    "<all_urls>"
+    "http://localhost:11434/*",
+    "http://127.0.0.1:11434/*",
+    "https://*/*",
+    "http://*/*"
   ],
   
   "background": {
@@ -26,12 +28,7 @@
       "matches": ["<all_urls>"],
       "js": ["content/content.js"],
       "run_at": "document_idle",
-      "all_frames": false,
-      "exclude_matches": [
-        "*://chrome://*",
-        "*://opera://*",
-        "*://chrome-extension://*"
-      ]
+      "all_frames": false
     }
   ],
   

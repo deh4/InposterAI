@@ -16,13 +16,22 @@ export class OllamaClient {
    */
   async testConnection() {
     try {
-      const response = await fetch(`${this.baseUrl}/api/version`);
+      const response = await fetch(`${this.baseUrl}/api/version`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        mode: 'cors'
+      });
+      
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
+      
       const data = await response.json();
       return { success: true, version: data.version };
     } catch (error) {
+      console.error('Ollama connection test failed:', error);
       return { success: false, error: error.message };
     }
   }
@@ -53,11 +62,15 @@ Respond with a JSON object containing:
 Response:`;
 
     try {
+      console.log('Making Ollama API request to:', `${this.baseUrl}/api/generate`);
+      
       const response = await fetch(`${this.baseUrl}/api/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
+        mode: 'cors',
         body: JSON.stringify({
           model: this.model,
           prompt: prompt,
@@ -65,13 +78,29 @@ Response:`;
         }),
       });
 
+      console.log('Ollama API response status:', response.status, response.statusText);
+
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        if (response.status === 403) {
+          throw new Error('Ollama server is denying access. Check if Ollama allows external connections.');
+        } else if (response.status === 404) {
+          throw new Error(`Model "${this.model}" not found. Try running: ollama pull ${this.model}`);
+        } else {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
       }
 
       const data = await response.json();
+      console.log('Ollama API response data:', data);
+      
       return this.parseAnalysisResponse(data.response);
     } catch (error) {
+      console.error('Ollama analysis error:', error);
+      
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        throw new Error('Cannot connect to Ollama. Make sure Ollama is running with: ollama serve');
+      }
+      
       throw new Error(`Ollama analysis failed: ${error.message}`);
     }
   }
@@ -134,10 +163,18 @@ Response:`;
    */
   async getModels() {
     try {
-      const response = await fetch(`${this.baseUrl}/api/tags`);
+      const response = await fetch(`${this.baseUrl}/api/tags`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        mode: 'cors'
+      });
+      
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
+      
       const data = await response.json();
       return data.models || [];
     } catch (error) {
