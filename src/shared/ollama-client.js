@@ -47,19 +47,25 @@ export class OllamaClient {
       throw new Error('Text cannot be empty');
     }
 
+    const startTime = Date.now(); // Start timing
+
     // Perform statistical analysis first
     console.log('Running statistical analysis...');
     const statisticalStats = this.statisticalAnalyzer.analyze(text);
 
-    // Get LLM analysis
+    // Get LLM analysis with timing
     console.log('Running LLM analysis...');
+    const llmStartTime = Date.now();
     const llmAnalysis = await this.getLLMAnalysis(text);
+    const llmEndTime = Date.now();
 
     // Combine using ensemble scoring
     const ensembleResult = this.statisticalAnalyzer.calculateEnsembleScore(
       statisticalStats, 
       llmAnalysis
     );
+
+    const totalTime = Date.now() - startTime;
 
     return {
       likelihood: ensembleResult.likelihood,
@@ -68,7 +74,13 @@ export class OllamaClient {
       rawResponse: llmAnalysis.rawResponse,
       statisticalBreakdown: ensembleResult.breakdown,
       llmAnalysis: llmAnalysis,
-      method: 'ensemble'
+      method: 'ensemble',
+      // Enhanced timing and model info
+      analysisTime: totalTime,
+      llmResponseTime: llmEndTime - llmStartTime,
+      statisticalTime: llmStartTime - startTime,
+      modelName: this.model,
+      timestamp: Date.now()
     };
   }
 
@@ -267,6 +279,78 @@ Be especially careful of false positives - many human writers use formal languag
     } catch (error) {
       throw new Error(`Failed to get models: ${error.message}`);
     }
+  }
+
+  /**
+   * Get Ollama version information
+   */
+  async getOllamaVersion() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/version`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json'
+        },
+        mode: 'cors'
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return data.version || 'unknown';
+      }
+      return 'unknown';
+    } catch (error) {
+      console.warn('Could not get Ollama version:', error.message);
+      return 'unknown';
+    }
+  }
+
+  /**
+   * Get detailed model information
+   */
+  async getModelInfo(modelName = null) {
+    try {
+      const model = modelName || this.model;
+      const response = await fetch(`${this.baseUrl}/api/show`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        mode: 'cors',
+        body: JSON.stringify({ name: model })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return {
+          name: model,
+          family: data.details?.family || 'unknown',
+          size: data.details?.parameter_size || 'unknown',
+          format: data.details?.format || 'unknown',
+          quantization: data.details?.quantization_level || 'unknown'
+        };
+      }
+      return { name: modelName || this.model, family: 'unknown', size: 'unknown', format: 'unknown' };
+    } catch (error) {
+      console.warn('Could not get model info:', error.message);
+      return { name: modelName || this.model, family: 'unknown', size: 'unknown', format: 'unknown' };
+    }
+  }
+
+  /**
+   * Set the current model for analysis
+   */
+  setModel(modelName) {
+    this.model = modelName;
+    console.log(`Ollama client updated to use model: ${modelName}`);
+  }
+
+  /**
+   * Get the current model name
+   */
+  getCurrentModel() {
+    return this.model;
   }
 }
 

@@ -94,11 +94,29 @@ class BackgroundService {
       throw new Error('Text too short for reliable analysis (minimum 50 characters)');
     }
 
+    const requestStartTime = Date.now();
+
     // Check cache first
     const textHash = this.hashText(text);
     const cached = this.getFromCache(textHash);
     if (cached) {
-      return { ...cached, fromCache: true };
+      // Add cache hit timing and model info for dashboard
+      const enhancedCached = {
+        ...cached,
+        fromCache: true,
+        analysisTime: Date.now() - requestStartTime,
+        modelName: cached.modelName || (await this.getSettings()).model,
+        cacheHitTime: Date.now() - requestStartTime
+      };
+      
+      // Send cache hit to dashboard
+      await this.sendToDashboard('analysis', {
+        ...enhancedCached,
+        metadata: options.metadata,
+        sessionId: await this.getSessionId()
+      });
+      
+      return enhancedCached;
     }
 
     // Test Ollama connection
@@ -107,23 +125,64 @@ class BackgroundService {
       throw new Error(`Ollama not available: ${connectionTest.error}`);
     }
 
+    // Get current settings and system info
+    const settings = await this.getSettings();
+    const ollamaVersion = await this.ollamaClient.getOllamaVersion();
+    const modelInfo = await this.ollamaClient.getModelInfo(settings.model);
+
+    // Update ollama client model if settings changed
+    this.ollamaClient.setModel(settings.model);
+
     // Perform analysis
+    const analysisStartTime = Date.now();
     const analysis = await this.ollamaClient.analyzeText(text);
+    const analysisEndTime = Date.now();
+    
+    // Enhance analysis with comprehensive system data
+    const enhancedAnalysis = {
+      ...analysis,
+      // Timing information
+      totalRequestTime: Date.now() - requestStartTime,
+      analysisTime: analysisEndTime - analysisStartTime,
+      connectionTestTime: analysisStartTime - requestStartTime,
+      
+      // System information
+      modelName: settings.model,
+      modelInfo: modelInfo,
+      ollamaVersion: ollamaVersion,
+      extensionVersion: chrome.runtime.getManifest()?.version || '1.0.0',
+      
+      // Settings context
+      currentSettings: {
+        autoAnalyze: settings.autoAnalyze,
+        minTextLength: settings.minTextLength,
+        sensitivityLevel: settings.sensitivityLevel
+      },
+      
+      // Cache performance
+      fromCache: false,
+      cacheSize: this.analysisCache.size,
+      
+      // Analysis context
+      textLength: text.length,
+      wordCount: text.split(/\s+/).length,
+      timestamp: Date.now()
+    };
     
     // Cache result
-    this.addToCache(textHash, analysis);
+    this.addToCache(textHash, enhancedAnalysis);
     
     // Update badge with result
-    this.updateBadge(analysis.likelihood);
+    this.updateBadge(enhancedAnalysis.likelihood);
 
-            // Send to dashboard if available
-        await this.sendToDashboard('analysis', {
-          ...analysis,
-          metadata: options.metadata,
-          sessionId: await this.getSessionId()
-        });
+    // Send to dashboard if available
+    await this.sendToDashboard('analysis', {
+      ...enhancedAnalysis,
+      metadata: options.metadata,
+      sessionId: await this.getSessionId()
+    });
 
-    return analysis;
+    return enhancedAnalysis;
   }
 
   hashText(text) {

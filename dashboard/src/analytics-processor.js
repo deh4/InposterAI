@@ -20,7 +20,7 @@ class AnalyticsProcessor {
       timestamp: Date.now(),
       url: data.metadata?.url || '',
       title: data.metadata?.title || '',
-      contentLength: data.metadata?.wordCount || 0,
+      contentLength: data.metadata?.wordCount || data.wordCount || 0,
       contentType: this.detectContentType(data.metadata?.url),
       sourceMethod: data.metadata?.source || 'unknown',
       aiLikelihood: Math.round(data.likelihood || 0),
@@ -29,10 +29,54 @@ class AnalyticsProcessor {
       analysisTime: data.analysisTime || 0,
       method: data.method || 'basic',
       reasoning: data.reasoning || '',
-      statisticalBreakdown: data.statisticalBreakdown || {},
-      llmAnalysis: data.llmAnalysis || {},
+      statisticalBreakdown: JSON.stringify(data.statisticalBreakdown || {}),
+      llmAnalysis: JSON.stringify(data.llmAnalysis || {}),
       fromCache: data.fromCache || false,
-      sessionId: data.sessionId || this.generateSessionId()
+      sessionId: data.sessionId || this.generateSessionId(),
+      
+      // Enhanced data points
+      language: data.metadata?.language || 'unknown',
+      domain: data.metadata?.domain || this.extractDomain(data.metadata?.url),
+      readingTime: data.metadata?.readingTime || Math.ceil((data.wordCount || 0) / 200),
+      
+      // Comprehensive timing information
+      totalRequestTime: data.totalRequestTime || data.analysisTime || 0,
+      llmResponseTime: data.llmResponseTime || 0,
+      statisticalTime: data.statisticalTime || 0,
+      connectionTestTime: data.connectionTestTime || 0,
+      cacheHitTime: data.cacheHitTime || 0,
+      
+      // System information
+      browserInfo: JSON.stringify({
+        userAgent: data.browserInfo?.userAgent || 'unknown',
+        extensionVersion: data.extensionVersion || data.browserInfo?.extensionVersion || '1.0.0',
+        timestamp: data.browserInfo?.timestamp || Date.now()
+      }),
+      
+      // Model information
+      modelInfo: JSON.stringify(data.modelInfo || { family: 'unknown', size: 'unknown' }),
+      ollamaVersion: data.ollamaVersion || 'unknown',
+      
+      // Settings context
+      settingsContext: JSON.stringify(data.currentSettings || {}),
+      
+      // Performance information
+      performanceInfo: JSON.stringify({
+        cacheSize: data.cacheSize || 0,
+        cacheHit: data.fromCache || false,
+        textLength: data.textLength || 0,
+        analysisSequence: data.analysisSequence || 0,
+        ...data.performance
+      }),
+      
+      // Content context
+      contentContext: JSON.stringify({
+        images: data.metadata?.contentContext?.images || 0,
+        links: data.metadata?.contentContext?.links || 0,
+        headings: data.metadata?.contentContext?.headings || 0,
+        domain: data.metadata?.domain || this.extractDomain(data.metadata?.url),
+        ...data.metadata?.contentContext
+      })
     };
 
     // Store in database
@@ -366,6 +410,192 @@ class AnalyticsProcessor {
         INSERT INTO model_performance (id, model_name, average_response_time, usage_count, last_used)
         VALUES (?, ?, ?, 1, ?)
       `, [uuidv4(), analysis.modelName, analysis.analysisTime, analysis.timestamp]);
+    }
+  }
+
+  extractDomain(url) {
+    if (!url) return 'unknown';
+    try {
+      return new URL(url).hostname;
+    } catch (error) {
+      return 'unknown';
+    }
+  }
+
+  /**
+   * Get detailed timing analysis
+   */
+  async getTimingAnalysis() {
+    try {
+      const results = await this.db.all(`
+        SELECT 
+          model_name,
+          AVG(total_request_time) as avg_total_time,
+          AVG(llm_response_time) as avg_llm_time,
+          AVG(statistical_time) as avg_statistical_time,
+          AVG(connection_test_time) as avg_connection_time,
+          AVG(CASE WHEN from_cache = 1 THEN cache_hit_time ELSE NULL END) as avg_cache_time,
+          COUNT(*) as sample_size,
+          SUM(CASE WHEN from_cache = 1 THEN 1 ELSE 0 END) as cache_hits,
+          ROUND((SUM(CASE WHEN from_cache = 1 THEN 1 ELSE 0 END) * 100.0) / COUNT(*), 2) as cache_hit_rate
+        FROM analyses 
+        WHERE timestamp > ? 
+        GROUP BY model_name
+        ORDER BY avg_total_time ASC
+      `, [Date.now() - (7 * 24 * 60 * 60 * 1000)]);
+
+      return results.map(row => ({
+        modelName: row.model_name,
+        avgTotalTime: Math.round(row.avg_total_time || 0),
+        avgLlmTime: Math.round(row.avg_llm_time || 0),
+        avgStatisticalTime: Math.round(row.avg_statistical_time || 0),
+        avgConnectionTime: Math.round(row.avg_connection_time || 0),
+        avgCacheTime: Math.round(row.avg_cache_time || 0),
+        sampleSize: row.sample_size,
+        cacheHits: row.cache_hits,
+        cacheHitRate: row.cache_hit_rate
+      }));
+    } catch (error) {
+      console.error('Failed to get timing analysis:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get system information summary
+   */
+  async getSystemSummary() {
+    try {
+      const [ollamaVersions, modelFamilies, extensionVersions] = await Promise.all([
+        this.db.all(`
+          SELECT ollama_version, COUNT(*) as count 
+          FROM analyses 
+          WHERE timestamp > ? 
+          GROUP BY ollama_version 
+          ORDER BY count DESC
+        `, [Date.now() - (30 * 24 * 60 * 60 * 1000)]),
+        
+        this.db.all(`
+          SELECT 
+            json_extract(model_info, '$.family') as model_family,
+            json_extract(model_info, '$.size') as model_size,
+            COUNT(*) as usage_count
+          FROM analyses 
+          WHERE timestamp > ? AND model_info != '{}'
+          GROUP BY model_family, model_size
+          ORDER BY usage_count DESC
+        `, [Date.now() - (30 * 24 * 60 * 60 * 1000)]),
+        
+        this.db.all(`
+          SELECT 
+            json_extract(browser_info, '$.extensionVersion') as extension_version,
+            COUNT(*) as count 
+          FROM analyses 
+          WHERE timestamp > ? 
+          GROUP BY extension_version 
+          ORDER BY count DESC
+        `, [Date.now() - (30 * 24 * 60 * 60 * 1000)])
+      ]);
+
+      return {
+        ollamaVersions: ollamaVersions.map(row => ({
+          version: row.ollama_version,
+          count: row.count
+        })),
+        modelFamilies: modelFamilies.map(row => ({
+          family: row.model_family || 'unknown',
+          size: row.model_size || 'unknown',
+          usageCount: row.usage_count
+        })),
+        extensionVersions: extensionVersions.map(row => ({
+          version: row.extension_version || 'unknown',
+          count: row.count
+        }))
+      };
+    } catch (error) {
+      console.error('Failed to get system summary:', error);
+      return { ollamaVersions: [], modelFamilies: [], extensionVersions: [] };
+    }
+  }
+
+  /**
+   * Get performance insights
+   */
+  async getPerformanceInsights() {
+    try {
+      const [timeDistribution, errorRates, cacheEfficiency] = await Promise.all([
+        this.db.all(`
+          SELECT 
+            CASE 
+              WHEN total_request_time < 1000 THEN '< 1s'
+              WHEN total_request_time < 3000 THEN '1-3s'
+              WHEN total_request_time < 5000 THEN '3-5s'
+              WHEN total_request_time < 10000 THEN '5-10s'
+              ELSE '> 10s'
+            END as time_range,
+            COUNT(*) as count
+          FROM analyses 
+          WHERE timestamp > ?
+          GROUP BY time_range
+          ORDER BY 
+            CASE time_range
+              WHEN '< 1s' THEN 1
+              WHEN '1-3s' THEN 2
+              WHEN '3-5s' THEN 3
+              WHEN '5-10s' THEN 4
+              ELSE 5
+            END
+        `, [Date.now() - (7 * 24 * 60 * 60 * 1000)]),
+        
+        this.db.get(`
+          SELECT 
+            COUNT(*) as total_analyses,
+            SUM(CASE WHEN from_cache = 1 THEN 1 ELSE 0 END) as cache_hits,
+            AVG(total_request_time) as avg_response_time,
+            MIN(total_request_time) as min_response_time,
+            MAX(total_request_time) as max_response_time
+          FROM analyses 
+          WHERE timestamp > ?
+        `, [Date.now() - (7 * 24 * 60 * 60 * 1000)]),
+        
+        this.db.all(`
+          SELECT 
+            DATE(timestamp/1000, 'unixepoch') as analysis_date,
+            COUNT(*) as total_requests,
+            SUM(CASE WHEN from_cache = 1 THEN 1 ELSE 0 END) as cache_hits,
+            AVG(total_request_time) as avg_time
+          FROM analyses 
+          WHERE timestamp > ?
+          GROUP BY analysis_date
+          ORDER BY analysis_date DESC
+          LIMIT 7
+        `, [Date.now() - (7 * 24 * 60 * 60 * 1000)])
+      ]);
+
+      return {
+        timeDistribution: timeDistribution.map(row => ({
+          range: row.time_range,
+          count: row.count
+        })),
+        overall: {
+          totalAnalyses: errorRates?.total_analyses || 0,
+          cacheHits: errorRates?.cache_hits || 0,
+          cacheHitRate: errorRates ? ((errorRates.cache_hits / errorRates.total_analyses) * 100) : 0,
+          avgResponseTime: Math.round(errorRates?.avg_response_time || 0),
+          minResponseTime: Math.round(errorRates?.min_response_time || 0),
+          maxResponseTime: Math.round(errorRates?.max_response_time || 0)
+        },
+        dailyTrends: cacheEfficiency.map(row => ({
+          date: row.analysis_date,
+          totalRequests: row.total_requests,
+          cacheHits: row.cache_hits,
+          cacheHitRate: ((row.cache_hits / row.total_requests) * 100),
+          avgTime: Math.round(row.avg_time)
+        }))
+      };
+    } catch (error) {
+      console.error('Failed to get performance insights:', error);
+      return { timeDistribution: [], overall: {}, dailyTrends: [] };
     }
   }
 }

@@ -160,6 +160,37 @@ class DashboardServer {
       }
     });
 
+    // Enhanced analytics endpoints
+    this.app.get('/api/analytics/timing', async (req, res) => {
+      try {
+        const timing = await this.processor.getTimingAnalysis();
+        res.json(timing);
+      } catch (error) {
+        console.error('Timing analysis error:', error);
+        res.status(500).json({ error: 'Failed to get timing analysis' });
+      }
+    });
+
+    this.app.get('/api/analytics/system', async (req, res) => {
+      try {
+        const system = await this.processor.getSystemSummary();
+        res.json(system);
+      } catch (error) {
+        console.error('System summary error:', error);
+        res.status(500).json({ error: 'Failed to get system summary' });
+      }
+    });
+
+    this.app.get('/api/analytics/performance', async (req, res) => {
+      try {
+        const performance = await this.processor.getPerformanceInsights();
+        res.json(performance);
+      } catch (error) {
+        console.error('Performance insights error:', error);
+        res.status(500).json({ error: 'Failed to get performance insights' });
+      }
+    });
+
     // Dashboard route
     this.app.get('/', (req, res) => {
       res.sendFile(path.join(__dirname, 'public', 'index.html'));

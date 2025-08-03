@@ -56,11 +56,21 @@ class AnalyticsDB {
         from_cache BOOLEAN DEFAULT 0,
         session_id TEXT,
         created_at INTEGER DEFAULT (strftime('%s', 'now')),
-        -- Enhanced metadata (optional)
+        -- Enhanced metadata
         language TEXT,
         domain TEXT,
         reading_time INTEGER,
+        -- Comprehensive timing information
+        total_request_time INTEGER,
+        llm_response_time INTEGER,
+        statistical_time INTEGER,
+        connection_test_time INTEGER,
+        cache_hit_time INTEGER,
+        -- System information
         browser_info TEXT,
+        model_info TEXT,
+        ollama_version TEXT,
+        settings_context TEXT,
         performance_info TEXT,
         content_context TEXT
       )`,
@@ -178,8 +188,11 @@ class AnalyticsDB {
       INSERT INTO analyses (
         id, timestamp, url, title, content_length, content_type, source_method,
         ai_likelihood, confidence, model_name, analysis_time, method, reasoning,
-        statistical_breakdown, llm_analysis, from_cache, session_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        statistical_breakdown, llm_analysis, from_cache, session_id,
+        language, domain, reading_time,
+        total_request_time, llm_response_time, statistical_time, connection_test_time, cache_hit_time,
+        browser_info, model_info, ollama_version, settings_context, performance_info, content_context
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const params = [
@@ -196,10 +209,27 @@ class AnalyticsDB {
       analysis.analysisTime,
       analysis.method,
       analysis.reasoning,
-      JSON.stringify(analysis.statisticalBreakdown),
-      JSON.stringify(analysis.llmAnalysis),
+      analysis.statisticalBreakdown || '{}',
+      analysis.llmAnalysis || '{}',
       analysis.fromCache ? 1 : 0,
-      analysis.sessionId
+      analysis.sessionId,
+      // Enhanced data points
+      analysis.language || 'unknown',
+      analysis.domain || 'unknown',
+      analysis.readingTime || 0,
+      // Timing information
+      analysis.totalRequestTime || 0,
+      analysis.llmResponseTime || 0,
+      analysis.statisticalTime || 0,
+      analysis.connectionTestTime || 0,
+      analysis.cacheHitTime || 0,
+      // System information
+      analysis.browserInfo || '{}',
+      analysis.modelInfo || '{}',
+      analysis.ollamaVersion || 'unknown',
+      analysis.settingsContext || '{}',
+      analysis.performanceInfo || '{}',
+      analysis.contentContext || '{}'
     ];
 
     return this.run(sql, params);
