@@ -415,16 +415,19 @@ function initializeContentAnalyzer() {
          }
        });
       
-      // Hide tooltip when clicking elsewhere (but not during analysis)
+      // Hide tooltip when clicking elsewhere (but not during analysis or when modal is open)
       document.addEventListener('mousedown', (event) => {
-        if (this.selectionTooltip && !this.selectionTooltip.contains(event.target) && !this.isAnalyzing) {
+        if (this.selectionTooltip && 
+            !this.selectionTooltip.contains(event.target) && 
+            !this.isAnalyzing && 
+            !this.analysisModal) {
           this.hideSelectionTooltip();
         }
       });
       
-      // Hide tooltip on scroll (but not during analysis)
+      // Hide tooltip on scroll (but not during analysis or when modal is open)
       window.addEventListener('scroll', () => {
-        if (this.selectionTooltip && !this.isAnalyzing) {
+        if (this.selectionTooltip && !this.isAnalyzing && !this.analysisModal) {
           this.hideSelectionTooltip();
         }
       });
@@ -455,6 +458,11 @@ function initializeContentAnalyzer() {
     }
 
     checkAndShowTooltip() {
+      // Don't show tooltip if modal is open or we're analyzing
+      if (this.analysisModal || this.isAnalyzing) {
+        return;
+      }
+      
       const selection = window.getSelection();
       const selectedText = selection.toString().trim();
       
@@ -549,6 +557,9 @@ function initializeContentAnalyzer() {
     }
 
     showAnalysisModal(selectedText) {
+      // Reset feedback record for new analysis
+      this.currentFeedbackRecordId = null;
+      
       // Create the analysis modal
       this.analysisModal = document.createElement('div');
       this.analysisModal.className = 'ai-detector-analysis-modal';
@@ -646,8 +657,33 @@ function initializeContentAnalyzer() {
             </div>
           </div>
           
+          <div class="feedback-ui">
+            <div class="feedback-header">
+              <span class="feedback-title">💬 Help improve accuracy</span>
+              <span class="feedback-subtitle">Your feedback helps train the local model</span>
+            </div>
+            
+            <div class="feedback-rating">
+              <button class="feedback-btn feedback-thumbs-up" data-rating="thumbs_up" title="Accurate analysis">
+                <span class="feedback-icon">👍</span>
+                <span class="feedback-label">Accurate</span>
+              </button>
+              <button class="feedback-btn feedback-thumbs-down" data-rating="thumbs_down" title="Incorrect analysis">
+                <span class="feedback-icon">👎</span>
+                <span class="feedback-label">Incorrect</span>
+              </button>
+            </div>
+
+            <div class="feedback-details hidden">
+              <!-- Detailed feedback form will be inserted here -->
+            </div>
+
+            <div class="feedback-status hidden">
+              <span class="status-text">✓ Feedback received. Thank you!</span>
+            </div>
+          </div>
+          
           <div class="result-actions">
-            <button class="btn-secondary feedback-btn">Provide Feedback</button>
             <button class="btn-primary close-modal-btn">Close</button>
           </div>
         </div>
@@ -656,16 +692,55 @@ function initializeContentAnalyzer() {
       // Enable outside click to close (only after results are shown)
       this.enableOutsideClickClose();
 
-      // Add event listeners
-      const feedbackBtn = resultsState.querySelector('.feedback-btn');
-      feedbackBtn.addEventListener('click', () => {
-        this.showFeedbackInModal(analysisData);
-      });
+      // Add event listeners for the new feedback UI (with a small delay to ensure DOM is ready)
+      setTimeout(() => {
+        const thumbsUpBtn = resultsState.querySelector('.feedback-thumbs-up');
+        const thumbsDownBtn = resultsState.querySelector('.feedback-thumbs-down');
+      
+      console.log('Setting up feedback buttons:', { thumbsUpBtn, thumbsDownBtn });
+      
+      if (thumbsUpBtn) {
+        thumbsUpBtn.addEventListener('click', () => {
+          console.log('Thumbs up clicked');
+          this.handleQuickFeedback('thumbs_up', analysisData, resultsState);
+        });
+      }
+      
+      if (thumbsDownBtn) {
+        thumbsDownBtn.addEventListener('click', () => {
+          console.log('Thumbs down clicked');
+          this.handleQuickFeedback('thumbs_down', analysisData, resultsState);
+        });
+      }
 
       const closeModalBtn = resultsState.querySelector('.close-modal-btn');
       closeModalBtn.addEventListener('click', () => {
         this.hideAnalysisModal();
       });
+
+        // Initialize feedback record for this analysis
+        this.initializeFeedbackRecord(analysisData);
+      }, 100); // 100ms delay to ensure DOM is ready
+    }
+
+    async initializeFeedbackRecord(analysisData) {
+      try {
+        if (!this.feedbackManager) {
+          this.feedbackManager = new FeedbackManager();
+        }
+        
+        // Create feedback record for this analysis
+        const record = await this.feedbackManager.createFeedbackRecord(analysisData, {
+          modelName: analysisData.modelName,
+          ollamaVersion: analysisData.ollamaVersion,
+          promptVersion: '1.0'
+        });
+        
+        this.currentFeedbackRecordId = record.id;
+        console.log('Feedback record initialized:', record.id);
+      } catch (error) {
+        console.error('Failed to initialize feedback record:', error);
+      }
     }
 
     showAnalysisError(errorMessage) {
@@ -714,6 +789,223 @@ function initializeContentAnalyzer() {
         }
       };
       document.addEventListener('keydown', escapeHandler);
+    }
+
+    handleQuickFeedback(rating, analysisData, resultsState) {
+      console.log('handleQuickFeedback called with:', { rating, analysisData, resultsState });
+      
+      if (rating === 'thumbs_up') {
+        // For thumbs up, submit feedback immediately and show success
+        console.log('Processing thumbs up feedback');
+        this.submitSimpleFeedback('thumbs_up', analysisData, resultsState);
+      } else {
+        // For thumbs down, show detailed feedback form
+        console.log('Processing thumbs down feedback');
+        this.showDetailedFeedback(analysisData, resultsState);
+      }
+    }
+
+    async submitSimpleFeedback(rating, analysisData, container) {
+      const feedbackStatus = container.querySelector('.feedback-status');
+      const feedbackRating = container.querySelector('.feedback-rating');
+      
+      // Hide rating buttons, show success message
+      feedbackRating.style.display = 'none';
+      feedbackStatus.classList.remove('hidden');
+      
+      // Submit feedback data
+      const feedbackData = {
+        rating: rating,
+        confidence: 'high',
+        reasons: [],
+        correction: null
+      };
+      
+      await this.submitFeedback(feedbackData, analysisData);
+      
+      // Auto-hide success message after 2 seconds
+      setTimeout(() => {
+        feedbackStatus.classList.add('hidden');
+        feedbackRating.style.display = 'flex';
+      }, 2000);
+    }
+
+    showDetailedFeedback(analysisData, container) {
+      console.log('showDetailedFeedback called with:', { analysisData, container });
+      
+      const feedbackDetails = container.querySelector('.feedback-details');
+      const feedbackRating = container.querySelector('.feedback-rating');
+      
+      console.log('Found elements:', { feedbackDetails, feedbackRating });
+      
+      if (!feedbackDetails || !feedbackRating) {
+        console.error('Required feedback elements not found!');
+        return;
+      }
+      
+      // Mark thumbs down as selected
+      const thumbsDownBtn = feedbackRating.querySelector('.feedback-thumbs-down');
+      if (thumbsDownBtn) {
+        thumbsDownBtn.classList.add('selected');
+        console.log('Marked thumbs down as selected');
+      }
+      
+      // Show detailed feedback form
+      feedbackDetails.classList.remove('hidden');
+      console.log('Showing detailed feedback form');
+      
+      // Populate detailed feedback form
+      feedbackDetails.innerHTML = this.getDetailedFeedbackHTML(analysisData);
+      console.log('Populated feedback form HTML');
+      
+      // Bind events for the detailed form
+      this.bindDetailedFormEvents(feedbackDetails, analysisData, container);
+      console.log('Bound detailed form events');
+    }
+
+    bindDetailedFormEvents(container, analysisData, resultsContainer) {
+      // Slider event handlers
+      const slider = container.querySelector('.correction-slider');
+      const aiPercentage = container.querySelector('.ai-percentage');
+      const humanPercentage = container.querySelector('.human-percentage');
+      
+      if (slider) {
+        slider.addEventListener('input', (e) => {
+          const value = parseInt(e.target.value);
+          aiPercentage.textContent = `${100 - value}%`;
+          humanPercentage.textContent = `${value}%`;
+        });
+      }
+
+      // Reason checkbox handlers
+      const reasonCheckboxes = container.querySelectorAll('.reason-checkbox');
+      reasonCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('click', () => {
+          checkbox.classList.toggle('selected');
+        });
+      });
+
+      // Confidence button handlers
+      const confidenceButtons = container.querySelectorAll('.confidence-btn');
+      confidenceButtons.forEach(button => {
+        button.addEventListener('click', () => {
+          // Remove selected from all buttons
+          confidenceButtons.forEach(btn => btn.classList.remove('selected'));
+          // Add selected to clicked button
+          button.classList.add('selected');
+        });
+      });
+
+      // Submit button handler
+      const submitBtn = container.querySelector('.submit-detailed-btn');
+      if (submitBtn) {
+        submitBtn.addEventListener('click', () => {
+          this.submitDetailedFeedback(container, analysisData, resultsContainer);
+        });
+      }
+
+      // Skip button handler
+      const skipBtn = container.querySelector('.skip-feedback-btn');
+      if (skipBtn) {
+        skipBtn.addEventListener('click', () => {
+          this.skipDetailedFeedback(container, resultsContainer);
+        });
+      }
+    }
+
+    async submitDetailedFeedback(container, analysisData, resultsContainer) {
+      // Collect feedback data
+      const slider = container.querySelector('.correction-slider');
+      const selectedReasons = Array.from(container.querySelectorAll('.reason-checkbox.selected'))
+        .map(checkbox => checkbox.textContent.trim());
+      const selectedConfidence = container.querySelector('.confidence-btn.selected');
+      
+      const feedbackData = {
+        rating: 'thumbs_down',
+        correction: slider ? parseInt(slider.value) : null,
+        reasons: selectedReasons,
+        confidence: selectedConfidence ? selectedConfidence.dataset.confidence : 'medium'
+      };
+
+      // Submit feedback
+      await this.submitFeedback(feedbackData, analysisData);
+
+      // Show success and hide detailed form
+      this.showFeedbackSuccess(container, resultsContainer);
+    }
+
+    skipDetailedFeedback(container, resultsContainer) {
+      // Hide detailed form
+      container.classList.add('hidden');
+      
+      // Reset thumbs down button
+      const thumbsDownBtn = resultsContainer.querySelector('.feedback-thumbs-down');
+      if (thumbsDownBtn) {
+        thumbsDownBtn.classList.remove('selected');
+      }
+    }
+
+    showFeedbackSuccess(container, resultsContainer) {
+      // Hide detailed form
+      container.classList.add('hidden');
+      
+      // Show success status
+      const feedbackStatus = resultsContainer.querySelector('.feedback-status');
+      if (feedbackStatus) {
+        feedbackStatus.classList.remove('hidden');
+        
+        // Auto-hide after 3 seconds
+        setTimeout(() => {
+          feedbackStatus.classList.add('hidden');
+          // Reset all feedback buttons
+          const feedbackRating = resultsContainer.querySelector('.feedback-rating');
+          if (feedbackRating) {
+            feedbackRating.style.display = 'flex';
+            const buttons = feedbackRating.querySelectorAll('.feedback-btn');
+            buttons.forEach(btn => btn.classList.remove('selected'));
+          }
+        }, 3000);
+      }
+    }
+
+    getDetailedFeedbackHTML(analysisData) {
+      return `
+        <div class="feedback-form-section">
+          <span class="feedback-form-title">What should the correct analysis be?</span>
+          <div class="correction-slider-container">
+            <div class="slider-labels">
+              <span class="ai-label">AI Generated</span>
+              <span class="human-label">Human Written</span>
+            </div>
+            <input type="range" class="correction-slider" min="0" max="100" value="${100 - analysisData.likelihood}" />
+            <div class="slider-value">
+              <span class="ai-percentage">${analysisData.likelihood}%</span> AI / 
+              <span class="human-percentage">${100 - analysisData.likelihood}%</span> Human
+            </div>
+          </div>
+        </div>
+        
+        <div class="feedback-form-section">
+          <span class="feedback-form-title">What went wrong? (Select all that apply)</span>
+          <div class="feedback-reasons">
+            ${this.generateReasonCheckboxes('incorrect')}
+          </div>
+        </div>
+        
+        <div class="feedback-form-section">
+          <span class="feedback-form-title">How confident are you?</span>
+          <div class="confidence-buttons">
+            <button class="confidence-btn" data-confidence="low">Low</button>
+            <button class="confidence-btn" data-confidence="medium">Medium</button>
+            <button class="confidence-btn" data-confidence="high">High</button>
+          </div>
+        </div>
+        
+        <div class="feedback-submit-actions">
+          <button class="btn-primary submit-detailed-btn">Submit Feedback</button>
+          <button class="btn-secondary skip-feedback-btn">Skip</button>
+        </div>
+      `;
     }
 
     showFeedbackInModal(analysisData) {
@@ -909,21 +1201,12 @@ function initializeContentAnalyzer() {
         await this.submitFeedback({ rating }, analysisData);
         this.showFeedbackStatus(widget, 'positive');
       } else {
-        // Show detailed feedback form for negative ratings
-        this.showDetailedFeedback(widget, analysisData);
+        // Show detailed feedback form for negative ratings (old method - disabled)
+        console.log('Old feedback system call - ignoring');
       }
     }
 
-    showDetailedFeedback(widget, analysisData) {
-      const detailsContainer = widget.querySelector('.feedback-details');
-      
-      const detailsHTML = this.getFullDetailsHTML();
-      detailsContainer.innerHTML = detailsHTML;
-      detailsContainer.classList.remove('hidden');
 
-      // Bind events for detailed form
-      this.bindDetailedFormEvents(detailsContainer, widget, analysisData);
-    }
 
     getFullDetailsHTML() {
       return `
@@ -1000,10 +1283,23 @@ function initializeContentAnalyzer() {
           'Mixed human/AI content',
           'Technical/formatting issues',
           'Language not well supported'
+        ],
+        incorrect: [
+          'Analysis was wrong',
+          'Poor reasoning quality',
+          'Incorrect confidence level',
+          'Statistical analysis failed',
+          'Model seems biased'
         ]
       };
 
-      return feedbackReasons[category]
+      const reasons = feedbackReasons[category];
+      if (!reasons) {
+        console.warn(`No feedback reasons found for category: ${category}`);
+        return '<p>No reasons available for this category.</p>';
+      }
+      
+      return reasons
         .map((reason, index) => `
           <label class="reason-checkbox">
             <input type="checkbox" value="${reason}" data-category="${category}">
@@ -1088,18 +1384,17 @@ function initializeContentAnalyzer() {
     async submitFeedback(feedbackData, analysisData) {
       try {
         if (!this.feedbackManager) {
-          const { FeedbackManager } = await import('../shared/feedback-manager.js');
           this.feedbackManager = new FeedbackManager();
         }
         
-        // Create feedback record
-        await this.feedbackManager.createFeedbackRecord({
-          analysis: analysisData,
-          feedback: feedbackData,
-          contentType: 'text-selection'
-        });
+        // Submit the detailed feedback to update the existing record
+        if (!this.currentFeedbackRecordId) {
+          throw new Error('No feedback record found - analysis may not have completed properly');
+        }
         
-        console.log('Feedback submitted successfully');
+        await this.feedbackManager.submitFeedback(this.currentFeedbackRecordId, feedbackData);
+        
+        console.log('Detailed feedback submitted successfully:', feedbackData);
       } catch (error) {
         console.error('Failed to submit feedback:', error);
       }
@@ -2243,6 +2538,311 @@ function initializeContentAnalyzer() {
           border-radius: 3px !important;
           font-size: 11px !important;
           font-weight: 500 !important;
+        }
+
+        /* Enhanced Feedback UI Styles */
+        .ai-detector-analysis-modal .feedback-section {
+          padding: 20px !important;
+        }
+
+        .ai-detector-analysis-modal .analysis-summary {
+          background: #f8fafc !important;
+          padding: 16px !important;
+          border-radius: 8px !important;
+          margin-bottom: 20px !important;
+          border: 1px solid #e2e8f0 !important;
+        }
+
+        .ai-detector-analysis-modal .summary-item {
+          display: flex !important;
+          justify-content: space-between !important;
+          align-items: center !important;
+          margin-bottom: 8px !important;
+        }
+
+        .ai-detector-analysis-modal .summary-item:last-child {
+          margin-bottom: 0 !important;
+        }
+
+        .ai-detector-analysis-modal .summary-label {
+          color: #64748b !important;
+          font-weight: 500 !important;
+          font-size: 14px !important;
+        }
+
+        .ai-detector-analysis-modal .summary-value {
+          color: #1e293b !important;
+          font-weight: 600 !important;
+          font-size: 14px !important;
+        }
+
+        .ai-detector-analysis-modal .feedback-header {
+          text-align: center !important;
+          margin-bottom: 24px !important;
+        }
+
+        .ai-detector-analysis-modal .feedback-title {
+          display: block !important;
+          font-size: 18px !important;
+          font-weight: 600 !important;
+          color: #1e293b !important;
+          margin-bottom: 4px !important;
+        }
+
+        .ai-detector-analysis-modal .feedback-subtitle {
+          display: block !important;
+          font-size: 14px !important;
+          color: #64748b !important;
+        }
+
+        .ai-detector-analysis-modal .feedback-rating {
+          display: flex !important;
+          gap: 16px !important;
+          justify-content: center !important;
+          margin-bottom: 24px !important;
+        }
+
+        .ai-detector-analysis-modal .feedback-btn {
+          display: flex !important;
+          flex-direction: column !important;
+          align-items: center !important;
+          gap: 8px !important;
+          padding: 20px 32px !important;
+          border: 2px solid #e2e8f0 !important;
+          border-radius: 12px !important;
+          background: white !important;
+          cursor: pointer !important;
+          transition: all 0.2s ease !important;
+          min-width: 120px !important;
+          font-size: 14px !important;
+          font-weight: 500 !important;
+        }
+
+        .ai-detector-analysis-modal .feedback-btn:hover {
+          border-color: #3b82f6 !important;
+          background: #f0f9ff !important;
+          transform: translateY(-2px) !important;
+          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15) !important;
+        }
+
+        .ai-detector-analysis-modal .feedback-btn.selected {
+          border-color: #3b82f6 !important;
+          background: #eff6ff !important;
+          color: #1e40af !important;
+        }
+
+        .ai-detector-analysis-modal .feedback-thumbs-up.selected {
+          border-color: #10b981 !important;
+          background: #ecfdf5 !important;
+          color: #065f46 !important;
+        }
+
+        .ai-detector-analysis-modal .feedback-thumbs-down.selected {
+          border-color: #ef4444 !important;
+          background: #fef2f2 !important;
+          color: #dc2626 !important;
+        }
+
+        .ai-detector-analysis-modal .feedback-icon {
+          font-size: 24px !important;
+          display: block !important;
+        }
+
+        .ai-detector-analysis-modal .feedback-label {
+          font-weight: 600 !important;
+          color: inherit !important;
+        }
+
+        .ai-detector-analysis-modal .feedback-details {
+          background: #f8fafc !important;
+          border: 1px solid #e2e8f0 !important;
+          border-radius: 8px !important;
+          padding: 20px !important;
+          margin-bottom: 20px !important;
+        }
+
+        .ai-detector-analysis-modal .feedback-form-section {
+          margin-bottom: 20px !important;
+        }
+
+        .ai-detector-analysis-modal .feedback-form-section:last-child {
+          margin-bottom: 0 !important;
+        }
+
+        .ai-detector-analysis-modal .feedback-form-title {
+          font-size: 15px !important;
+          font-weight: 600 !important;
+          color: #374151 !important;
+          margin-bottom: 12px !important;
+          display: block !important;
+        }
+
+        .ai-detector-analysis-modal .correction-slider-container {
+          background: white !important;
+          padding: 16px !important;
+          border-radius: 8px !important;
+          border: 1px solid #d1d5db !important;
+        }
+
+        .ai-detector-analysis-modal .slider-labels {
+          display: flex !important;
+          justify-content: space-between !important;
+          margin-bottom: 12px !important;
+          font-size: 13px !important;
+          font-weight: 500 !important;
+        }
+
+        .ai-detector-analysis-modal .ai-label {
+          color: #dc2626 !important;
+        }
+
+        .ai-detector-analysis-modal .human-label {
+          color: #059669 !important;
+        }
+
+        .ai-detector-analysis-modal .correction-slider {
+          width: 100% !important;
+          height: 6px !important;
+          -webkit-appearance: none !important;
+          background: linear-gradient(to right, #dc2626 0%, #fbbf24 50%, #059669 100%) !important;
+          border-radius: 3px !important;
+          outline: none !important;
+        }
+
+        .ai-detector-analysis-modal .correction-slider::-webkit-slider-thumb {
+          -webkit-appearance: none !important;
+          width: 20px !important;
+          height: 20px !important;
+          border-radius: 50% !important;
+          background: white !important;
+          border: 2px solid #3b82f6 !important;
+          cursor: pointer !important;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+        }
+
+        .ai-detector-analysis-modal .slider-value {
+          text-align: center !important;
+          margin-top: 8px !important;
+          font-size: 14px !important;
+          font-weight: 600 !important;
+          color: #374151 !important;
+        }
+
+        .ai-detector-analysis-modal .feedback-reasons {
+          display: grid !important;
+          grid-template-columns: 1fr 1fr !important;
+          gap: 8px !important;
+          margin-bottom: 16px !important;
+        }
+
+        .ai-detector-analysis-modal .reason-checkbox {
+          display: flex !important;
+          align-items: center !important;
+          gap: 8px !important;
+          padding: 8px 12px !important;
+          background: white !important;
+          border: 1px solid #d1d5db !important;
+          border-radius: 6px !important;
+          cursor: pointer !important;
+          transition: all 0.2s ease !important;
+          font-size: 13px !important;
+        }
+
+        .ai-detector-analysis-modal .reason-checkbox:hover {
+          border-color: #3b82f6 !important;
+          background: #f0f9ff !important;
+        }
+
+        .ai-detector-analysis-modal .reason-checkbox.selected {
+          border-color: #3b82f6 !important;
+          background: #eff6ff !important;
+          color: #1e40af !important;
+        }
+
+        .ai-detector-analysis-modal .confidence-buttons {
+          display: flex !important;
+          gap: 8px !important;
+          justify-content: center !important;
+          margin-bottom: 20px !important;
+        }
+
+        .ai-detector-analysis-modal .confidence-btn {
+          padding: 8px 16px !important;
+          border: 1px solid #d1d5db !important;
+          border-radius: 6px !important;
+          background: white !important;
+          cursor: pointer !important;
+          transition: all 0.2s ease !important;
+          font-size: 13px !important;
+          font-weight: 500 !important;
+        }
+
+        .ai-detector-analysis-modal .confidence-btn:hover {
+          border-color: #3b82f6 !important;
+          background: #f0f9ff !important;
+        }
+
+        .ai-detector-analysis-modal .confidence-btn.selected {
+          border-color: #3b82f6 !important;
+          background: #3b82f6 !important;
+          color: white !important;
+        }
+
+        .ai-detector-analysis-modal .feedback-submit-actions {
+          display: flex !important;
+          gap: 12px !important;
+          justify-content: center !important;
+        }
+
+        .ai-detector-analysis-modal .btn-primary {
+          background: #3b82f6 !important;
+          color: white !important;
+          border: none !important;
+          padding: 10px 20px !important;
+          border-radius: 6px !important;
+          font-weight: 500 !important;
+          cursor: pointer !important;
+          transition: all 0.2s ease !important;
+        }
+
+        .ai-detector-analysis-modal .btn-primary:hover {
+          background: #2563eb !important;
+          transform: translateY(-1px) !important;
+        }
+
+        .ai-detector-analysis-modal .btn-secondary {
+          background: #f3f4f6 !important;
+          color: #374151 !important;
+          border: 1px solid #d1d5db !important;
+          padding: 10px 20px !important;
+          border-radius: 6px !important;
+          font-weight: 500 !important;
+          cursor: pointer !important;
+          transition: all 0.2s ease !important;
+        }
+
+        .ai-detector-analysis-modal .btn-secondary:hover {
+          background: #e5e7eb !important;
+          transform: translateY(-1px) !important;
+        }
+
+        .ai-detector-analysis-modal .feedback-status {
+          text-align: center !important;
+          padding: 16px !important;
+          background: #ecfdf5 !important;
+          border: 1px solid #bbf7d0 !important;
+          border-radius: 8px !important;
+          margin-bottom: 16px !important;
+        }
+
+        .ai-detector-analysis-modal .status-text {
+          color: #065f46 !important;
+          font-weight: 500 !important;
+          font-size: 14px !important;
+        }
+
+        .ai-detector-analysis-modal .feedback-actions {
+          text-align: center !important;
         }
 
         /* Reuse popup analysis styles in modal */
