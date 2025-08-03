@@ -544,47 +544,247 @@ function initializeContentAnalyzer() {
       }
     }
 
-    showAnalysisProgress() {
-      if (!this.selectionTooltip) return;
-      
-      const tooltipContent = this.selectionTooltip.querySelector('.tooltip-content');
-      tooltipContent.innerHTML = `
-        <div class="progress-container">
-          <div class="progress-bar">
-            <div class="progress-fill"></div>
+    showAnalysisModal(selectedText) {
+      // Create the analysis modal
+      this.analysisModal = document.createElement('div');
+      this.analysisModal.className = 'ai-detector-analysis-modal';
+      this.analysisModal.innerHTML = `
+        <div class="analysis-modal-content">
+          <div class="modal-header">
+            <h3>AI Content Analysis</h3>
+            <button class="close-btn" title="Close">&times;</button>
           </div>
-          <div class="progress-text">Analyzing...</div>
+          
+          <div class="modal-body">
+            <div class="analysis-state progress-state">
+              <div class="progress-container">
+                <div class="progress-bar">
+                  <div class="progress-fill"></div>
+                </div>
+                <div class="progress-text">Analyzing selected text...</div>
+              </div>
+              <div class="text-preview">
+                <strong>Analyzing:</strong> "${selectedText.substring(0, 100)}${selectedText.length > 100 ? '...' : ''}"
+              </div>
+            </div>
+            
+            <div class="analysis-state results-state hidden">
+              <!-- Results will be populated here -->
+            </div>
+            
+            <div class="analysis-state feedback-state hidden">
+              <!-- Feedback UI will be populated here -->
+            </div>
+          </div>
         </div>
       `;
+
+      // Add close button functionality
+      const closeBtn = this.analysisModal.querySelector('.close-btn');
+      closeBtn.addEventListener('click', () => {
+        this.hideAnalysisModal();
+      });
+
+      // Add to page with animation
+      document.body.appendChild(this.analysisModal);
+      requestAnimationFrame(() => {
+        this.analysisModal.classList.add('show');
+      });
+    }
+
+    showAnalysisResults(analysisData, selectedText) {
+      if (!this.analysisModal) return;
+
+      const progressState = this.analysisModal.querySelector('.progress-state');
+      const resultsState = this.analysisModal.querySelector('.results-state');
+
+      // Hide progress, show results
+      progressState.classList.add('hidden');
+      resultsState.classList.remove('hidden');
+
+      // Populate results
+      resultsState.innerHTML = `
+        <div class="analysis-result">
+          <div class="result-header">
+            <div class="likelihood-score ${this.getLikelihoodClass(analysisData.likelihood)}">
+              <span class="score-value">${Math.round(analysisData.likelihood)}%</span>
+              <span class="score-label">AI Likelihood</span>
+            </div>
+            <div class="confidence-score">
+              <span class="score-value">${Math.round(analysisData.confidence)}%</span>
+              <span class="score-label">Confidence</span>
+            </div>
+          </div>
+          
+          <div class="result-details">
+            <div class="reasoning">
+              ${this.formatReasoning(analysisData.reasoning)}
+            </div>
+            
+            <div class="statistical-breakdown">
+              <h4>📊 Statistical Analysis</h4>
+              <div class="stats-grid">
+                ${this.renderStatisticalBreakdown(analysisData)}
+              </div>
+              <div class="analysis-method">
+                <small>🔬 Method: ${analysisData.method || 'ensemble'}</small>
+              </div>
+            </div>
+            
+            <div class="text-info">
+              <div class="text-preview">
+                <strong>Analyzed text:</strong> "${selectedText.substring(0, 100)}${selectedText.length > 100 ? '...' : ''}"
+              </div>
+              <div class="result-meta">
+                <span>${selectedText.split(/\s+/).length} words • ${new Date().toLocaleTimeString()}</span>
+                ${analysisData.fromCache ? '<span class="cache-indicator">📁 Cached</span>' : ''}
+              </div>
+            </div>
+          </div>
+          
+          <div class="result-actions">
+            <button class="btn-secondary feedback-btn">Provide Feedback</button>
+            <button class="btn-primary close-modal-btn">Close</button>
+          </div>
+        </div>
+      `;
+
+      // Enable outside click to close (only after results are shown)
+      this.enableOutsideClickClose();
+
+      // Add event listeners
+      const feedbackBtn = resultsState.querySelector('.feedback-btn');
+      feedbackBtn.addEventListener('click', () => {
+        this.showFeedbackInModal(analysisData);
+      });
+
+      const closeModalBtn = resultsState.querySelector('.close-modal-btn');
+      closeModalBtn.addEventListener('click', () => {
+        this.hideAnalysisModal();
+      });
     }
 
     showAnalysisError(errorMessage) {
-      if (!this.selectionTooltip) return;
-      
-      const tooltipContent = this.selectionTooltip.querySelector('.tooltip-content');
-      tooltipContent.innerHTML = `
+      if (!this.analysisModal) return;
+
+      const progressState = this.analysisModal.querySelector('.progress-state');
+      progressState.innerHTML = `
         <div class="error-container">
           <span class="error-icon">⚠️</span>
           <span class="error-text">${errorMessage}</span>
+          <button class="btn-secondary retry-btn">Try Again</button>
         </div>
       `;
+
+      // Enable outside click to close on error
+      this.enableOutsideClickClose();
+    }
+
+    hideAnalysisModal() {
+      if (!this.analysisModal) return;
       
-      // Hide tooltip after showing error
+      this.analysisModal.classList.add('hiding');
       setTimeout(() => {
-        this.hideSelectionTooltip();
-      }, 3000);
+        if (this.analysisModal && this.analysisModal.parentNode) {
+          this.analysisModal.parentNode.removeChild(this.analysisModal);
+        }
+        this.analysisModal = null;
+      }, 300);
+    }
+
+    enableOutsideClickClose() {
+      if (!this.analysisModal) return;
+      
+      // Close on click outside (only after results/error are shown)
+      this.analysisModal.addEventListener('click', (event) => {
+        if (event.target === this.analysisModal) {
+          this.hideAnalysisModal();
+        }
+      });
+      
+      // Close on Escape key
+      const escapeHandler = (event) => {
+        if (event.key === 'Escape') {
+          this.hideAnalysisModal();
+          document.removeEventListener('keydown', escapeHandler);
+        }
+      };
+      document.addEventListener('keydown', escapeHandler);
+    }
+
+    showFeedbackInModal(analysisData) {
+      if (!this.analysisModal) return;
+
+      const resultsState = this.analysisModal.querySelector('.results-state');
+      const feedbackState = this.analysisModal.querySelector('.feedback-state');
+
+      // Hide results, show feedback
+      resultsState.classList.add('hidden');
+      feedbackState.classList.remove('hidden');
+
+      // Populate feedback UI
+      feedbackState.innerHTML = `
+        <div class="feedback-section">
+          <div class="analysis-summary">
+            <div class="summary-item">
+              <span class="summary-label">Our Analysis:</span>
+              <span class="summary-value">${Math.round(analysisData.likelihood)}% AI-generated</span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Confidence:</span>
+              <span class="summary-value">${Math.round(analysisData.confidence)}%</span>
+            </div>
+          </div>
+          
+          <div class="feedback-header">
+            <span class="feedback-title">💬 Help improve accuracy</span>
+            <span class="feedback-subtitle">Your feedback helps train the local model</span>
+          </div>
+          
+          <div class="feedback-rating">
+            <button class="feedback-btn feedback-thumbs-up" data-rating="thumbs_up" title="Accurate analysis">
+              <span class="feedback-icon">👍</span>
+              <span class="feedback-label">Accurate</span>
+            </button>
+            <button class="feedback-btn feedback-thumbs-down" data-rating="thumbs_down" title="Incorrect analysis">
+              <span class="feedback-icon">👎</span>
+              <span class="feedback-label">Incorrect</span>
+            </button>
+          </div>
+
+          <div class="feedback-details hidden">
+            <!-- Detailed feedback form will be inserted here -->
+          </div>
+
+          <div class="feedback-status hidden">
+            <span class="status-text">✓ Feedback received. Thank you!</span>
+          </div>
+          
+          <div class="feedback-actions">
+            <button class="btn-secondary back-btn">← Back to Results</button>
+          </div>
+        </div>
+      `;
+
+      // Bind feedback events
+      this.bindFeedbackEvents(feedbackState, analysisData);
+
+      // Add back button functionality
+      const backBtn = feedbackState.querySelector('.back-btn');
+      backBtn.addEventListener('click', () => {
+        feedbackState.classList.add('hidden');
+        resultsState.classList.remove('hidden');
+      });
     }
 
     async performSelectionAnalysis(selectedText) {
-      const analyzeBtn = this.selectionTooltip?.querySelector('.analyze-btn');
-      if (!analyzeBtn) return;
-      
       try {
         // Set analyzing state to prevent tooltip from disappearing
         this.isAnalyzing = true;
         
-        // Transform button into progress bar
-        this.showAnalysisProgress();
+        // Hide selection tooltip and show analysis modal
+        this.hideSelectionTooltip();
+        this.showAnalysisModal(selectedText);
         
         // Use the same analysis system as the toolbar
         const response = await chrome.runtime.sendMessage({
@@ -609,10 +809,9 @@ function initializeContentAnalyzer() {
           throw new Error(response.error || 'Analysis failed');
         }
         
-        // Reset analyzing state and hide tooltip
+        // Reset analyzing state and show results in modal
         this.isAnalyzing = false;
-        this.hideSelectionTooltip();
-        this.showInlineAnalysisResult(response.data, selectedText);
+        this.showAnalysisResults(response.data, selectedText);
         
       } catch (error) {
         console.error('Selection analysis failed:', error);
@@ -621,112 +820,7 @@ function initializeContentAnalyzer() {
       }
     }
 
-    showInlineAnalysisResult(analysisData, selectedText) {
-      // Create inline result overlay similar to popup styling
-      const overlay = document.createElement('div');
-      overlay.className = 'ai-detector-inline-result';
-      overlay.innerHTML = `
-        <div class="inline-result-content">
-          <div class="result-header">
-            <h3>Analysis Result</h3>
-            <button class="close-btn" title="Close">&times;</button>
-          </div>
-          
-          <div class="analysis-result">
-            <div class="result-header">
-              <div class="likelihood-score ${this.getLikelihoodClass(analysisData.likelihood)}" id="likelihoodScore">
-                <span class="score-value">${Math.round(analysisData.likelihood)}%</span>
-                <span class="score-label">AI Likelihood</span>
-              </div>
-              <div class="confidence-score" id="confidenceScore">
-                <span class="score-value">${Math.round(analysisData.confidence)}%</span>
-                <span class="score-label">Confidence</span>
-              </div>
-            </div>
-            
-            <div class="result-details">
-              <div class="reasoning" id="reasoning">
-                ${this.formatReasoning(analysisData.reasoning)}
-              </div>
-              
-              <div class="statistical-breakdown" id="statisticalBreakdown">
-                <h4>📊 Statistical Analysis</h4>
-                <div class="stats-grid">
-                  ${this.renderStatisticalBreakdown(analysisData)}
-                </div>
-                <div class="analysis-method">
-                  <small>🔬 Method: ${analysisData.method || 'ensemble'}</small>
-                </div>
-              </div>
-              
-              <div class="analysis-details">
-                <div class="text-preview">
-                  <strong>Analyzed text:</strong> "${selectedText.substring(0, 100)}${selectedText.length > 100 ? '...' : ''}"
-                </div>
-                <div class="result-meta">
-                  <span>${selectedText.split(/\s+/).length} words • ${new Date().toLocaleTimeString()}</span>
-                  ${analysisData.fromCache ? '<span class="cache-indicator">📁 Cached</span>' : ''}
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <div class="result-actions">
-            <button class="btn-secondary feedback-btn">Provide Feedback</button>
-            <button class="btn-primary details-btn">View Details</button>
-          </div>
-        </div>
-      `;
-      
-      // Add event listeners
-      const closeBtn = overlay.querySelector('.close-btn');
-      closeBtn.addEventListener('click', () => {
-        this.hideInlineResult(overlay);
-      });
-      
-      const feedbackBtn = overlay.querySelector('.feedback-btn');
-      feedbackBtn.addEventListener('click', () => {
-        this.showFeedbackForSelection(analysisData);
-        this.hideInlineResult(overlay);
-      });
-      
-      const detailsBtn = overlay.querySelector('.details-btn');
-      detailsBtn.addEventListener('click', () => {
-        this.showDetailedResults(analysisData);
-        this.hideInlineResult(overlay);
-      });
-      
-      // Close on click outside
-      overlay.addEventListener('click', (event) => {
-        if (event.target === overlay) {
-          this.hideInlineResult(overlay);
-        }
-      });
-      
-      // Close on Escape key
-      const escapeHandler = (event) => {
-        if (event.key === 'Escape') {
-          this.hideInlineResult(overlay);
-          document.removeEventListener('keydown', escapeHandler);
-        }
-      };
-      document.addEventListener('keydown', escapeHandler);
-      
-      // Add to page with animation
-      document.body.appendChild(overlay);
-      requestAnimationFrame(() => {
-        overlay.classList.add('show');
-      });
-    }
 
-    hideInlineResult(overlay) {
-      overlay.classList.add('hiding');
-      setTimeout(() => {
-        if (overlay.parentNode) {
-          overlay.parentNode.removeChild(overlay);
-        }
-      }, 300);
-    }
 
     formatReasoning(reasoning) {
       if (!reasoning) return 'No reasoning provided.';
@@ -769,110 +863,7 @@ function initializeContentAnalyzer() {
       return 'human';
     }
 
-    async showFeedbackForSelection(analysisData) {
-      // Import FeedbackManager and FeedbackUI if not already available
-      if (!this.feedbackManager) {
-        const { FeedbackManager } = await import('../shared/feedback-manager.js');
-        const { FeedbackUI } = await import('../shared/feedback-ui.js');
-        this.feedbackManager = new FeedbackManager();
-        this.feedbackUI = new FeedbackUI(this.feedbackManager);
-      }
 
-      // Create feedback overlay
-      const feedbackOverlay = document.createElement('div');
-      feedbackOverlay.className = 'ai-detector-feedback-overlay';
-      feedbackOverlay.innerHTML = `
-        <div class="feedback-overlay-content">
-          <div class="feedback-header">
-            <h3>Analysis Feedback</h3>
-            <button class="close-btn" title="Close">&times;</button>
-          </div>
-          <div class="feedback-body">
-            <div class="analysis-summary">
-              <div class="summary-item">
-                <span class="summary-label">Our Analysis:</span>
-                <span class="summary-value">${Math.round(analysisData.likelihood)}% AI-generated</span>
-              </div>
-              <div class="summary-item">
-                <span class="summary-label">Confidence:</span>
-                <span class="summary-value">${Math.round(analysisData.confidence)}%</span>
-              </div>
-            </div>
-            ${this.getFeedbackWidgetHTML()}
-          </div>
-        </div>
-      `;
-
-      // Add event listeners
-      const closeBtn = feedbackOverlay.querySelector('.close-btn');
-      closeBtn.addEventListener('click', () => {
-        this.hideFeedbackOverlay(feedbackOverlay);
-      });
-
-      // Close on click outside
-      feedbackOverlay.addEventListener('click', (event) => {
-        if (event.target === feedbackOverlay) {
-          this.hideFeedbackOverlay(feedbackOverlay);
-        }
-      });
-
-      // Close on Escape key
-      const escapeHandler = (event) => {
-        if (event.key === 'Escape') {
-          this.hideFeedbackOverlay(feedbackOverlay);
-          document.removeEventListener('keydown', escapeHandler);
-        }
-      };
-      document.addEventListener('keydown', escapeHandler);
-
-      // Bind feedback events
-      this.bindFeedbackEvents(feedbackOverlay, analysisData);
-
-      // Add to page with animation
-      document.body.appendChild(feedbackOverlay);
-      requestAnimationFrame(() => {
-        feedbackOverlay.classList.add('show');
-      });
-    }
-
-    hideFeedbackOverlay(overlay) {
-      overlay.classList.add('hiding');
-      setTimeout(() => {
-        if (overlay.parentNode) {
-          overlay.parentNode.removeChild(overlay);
-        }
-      }, 300);
-    }
-
-    getFeedbackWidgetHTML() {
-      return `
-        <div class="feedback-section">
-          <div class="feedback-header">
-            <span class="feedback-title">💬 Help improve accuracy</span>
-            <span class="feedback-subtitle">Your feedback helps train the local model</span>
-          </div>
-          
-          <div class="feedback-rating">
-            <button class="feedback-btn feedback-thumbs-up" data-rating="thumbs_up" title="Accurate analysis">
-              <span class="feedback-icon">👍</span>
-              <span class="feedback-label">Accurate</span>
-            </button>
-            <button class="feedback-btn feedback-thumbs-down" data-rating="thumbs_down" title="Incorrect analysis">
-              <span class="feedback-icon">👎</span>
-              <span class="feedback-label">Incorrect</span>
-            </button>
-          </div>
-
-          <div class="feedback-details hidden">
-            <!-- Detailed feedback form will be inserted here -->
-          </div>
-
-          <div class="feedback-status hidden">
-            <span class="status-text">✓ Feedback received. Thank you!</span>
-          </div>
-        </div>
-      `;
-    }
 
     bindFeedbackEvents(widget, analysisData) {
       const ratingButtons = widget.querySelectorAll('[data-rating]');
@@ -1931,8 +1922,8 @@ function initializeContentAnalyzer() {
           100% { width: 100%; }
         }
 
-        /* Inline Analysis Result Styles (reusing popup styles) */
-        .ai-detector-inline-result {
+        /* Analysis Modal Styles */
+        .ai-detector-analysis-modal {
           position: fixed !important;
           top: 0 !important;
           left: 0 !important;
@@ -1948,15 +1939,15 @@ function initializeContentAnalyzer() {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
         }
 
-        .ai-detector-inline-result.show {
+        .ai-detector-analysis-modal.show {
           opacity: 1 !important;
         }
 
-        .ai-detector-inline-result.hiding {
+        .ai-detector-analysis-modal.hiding {
           opacity: 0 !important;
         }
 
-        .ai-detector-inline-result .inline-result-content {
+        .ai-detector-analysis-modal .analysis-modal-content {
           background: white !important;
           border-radius: 12px !important;
           box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25) !important;
@@ -1968,11 +1959,11 @@ function initializeContentAnalyzer() {
           transition: transform 0.3s ease-out !important;
         }
 
-        .ai-detector-inline-result.show .inline-result-content {
+        .ai-detector-analysis-modal.show .analysis-modal-content {
           transform: scale(1) translateY(0) !important;
         }
 
-        .ai-detector-inline-result .result-header {
+        .ai-detector-analysis-modal .modal-header {
           padding: 20px 24px 0 24px !important;
           display: flex !important;
           justify-content: space-between !important;
@@ -1981,14 +1972,14 @@ function initializeContentAnalyzer() {
           margin-bottom: 20px !important;
         }
 
-        .ai-detector-inline-result .result-header h3 {
+        .ai-detector-analysis-modal .modal-header h3 {
           margin: 0 !important;
           font-size: 18px !important;
           font-weight: 600 !important;
           color: #111827 !important;
         }
 
-        .ai-detector-inline-result .close-btn {
+        .ai-detector-analysis-modal .close-btn {
           background: none !important;
           border: none !important;
           font-size: 24px !important;
@@ -2004,17 +1995,56 @@ function initializeContentAnalyzer() {
           transition: background-color 0.2s ease !important;
         }
 
-        .ai-detector-inline-result .close-btn:hover {
+        .ai-detector-analysis-modal .close-btn:hover {
           background: #f3f4f6 !important;
           color: #374151 !important;
         }
 
-        /* Reuse popup analysis styles */
-        .ai-detector-inline-result .analysis-result {
+        .ai-detector-analysis-modal .modal-body {
+          padding: 0 24px 24px 24px !important;
+        }
+
+        .ai-detector-analysis-modal .analysis-state {
+          display: block !important;
+        }
+
+        .ai-detector-analysis-modal .analysis-state.hidden {
+          display: none !important;
+        }
+
+        .ai-detector-analysis-modal .text-preview {
+          font-size: 13px !important;
+          color: #6b7280 !important;
+          margin-top: 16px !important;
+          padding: 12px !important;
+          background: #f9fafb !important;
+          border-radius: 6px !important;
+          border-left: 3px solid #3b82f6 !important;
+        }
+
+        .ai-detector-analysis-modal .back-btn {
+          background: #f9fafb !important;
+          color: #374151 !important;
+          border: 1px solid #d1d5db !important;
+          border-radius: 6px !important;
+          padding: 8px 16px !important;
+          font-size: 14px !important;
+          font-weight: 500 !important;
+          cursor: pointer !important;
+          transition: background-color 0.2s ease !important;
+          margin-top: 16px !important;
+        }
+
+        .ai-detector-analysis-modal .back-btn:hover {
+          background: #f3f4f6 !important;
+        }
+
+        /* Reuse popup analysis styles in modal */
+        .ai-detector-analysis-modal .analysis-result {
           padding: 0 24px !important;
         }
 
-        .ai-detector-inline-result .analysis-result .result-header {
+        .ai-detector-analysis-modal .analysis-result .result-header {
           padding: 0 !important;
           border: none !important;
           margin-bottom: 16px !important;
@@ -2022,8 +2052,8 @@ function initializeContentAnalyzer() {
           gap: 16px !important;
         }
 
-        .ai-detector-inline-result .likelihood-score,
-        .ai-detector-inline-result .confidence-score {
+        .ai-detector-analysis-modal .likelihood-score,
+        .ai-detector-analysis-modal .confidence-score {
           flex: 1 !important;
           text-align: center !important;
           padding: 16px !important;
