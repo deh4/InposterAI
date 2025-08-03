@@ -12,26 +12,37 @@ export class FeedbackManager {
     this.settingsKey = 'ai-detector-settings';
     this.dataRetentionDays = 90;
     
+    // Initialize with default session, will be updated async
+    this.currentSession = {
+      id: this.generateSessionId(),
+      date: new Date().toDateString(),
+      analysisCount: 0,
+      userExpertise: null,
+      showMotivationMessage: true
+    };
+    
+    // Initialize session asynchronously
     this.initializeSession();
   }
 
   /**
    * Initialize or continue session
    */
-  initializeSession() {
+  async initializeSession() {
     const today = new Date().toDateString();
-    let session = this.getStoredSession();
+    let session = await this.getStoredSession();
     
     if (!session || session.date !== today) {
       // Create new session for today
+      const settings = await this.getSettings();
       session = {
         id: this.generateSessionId(),
         date: today,
         analysisCount: 0,
         userExpertise: null,
-        showMotivationMessage: !this.hasSeenMotivationMessage()
+        showMotivationMessage: !(settings.hasSeenFeedbackMotivation || false)
       };
-      this.storeSession(session);
+      await this.storeSession(session);
     }
     
     this.currentSession = session;
