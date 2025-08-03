@@ -413,16 +413,16 @@ function initializeContentAnalyzer() {
          }
        });
       
-      // Hide tooltip when clicking elsewhere
+      // Hide tooltip when clicking elsewhere (but not during analysis)
       document.addEventListener('mousedown', (event) => {
-        if (this.selectionTooltip && !this.selectionTooltip.contains(event.target)) {
+        if (this.selectionTooltip && !this.selectionTooltip.contains(event.target) && !this.isAnalyzing) {
           this.hideSelectionTooltip();
         }
       });
       
-      // Hide tooltip on scroll
+      // Hide tooltip on scroll (but not during analysis)
       window.addEventListener('scroll', () => {
-        if (this.selectionTooltip) {
+        if (this.selectionTooltip && !this.isAnalyzing) {
           this.hideSelectionTooltip();
         }
       });
@@ -580,6 +580,9 @@ function initializeContentAnalyzer() {
       if (!analyzeBtn) return;
       
       try {
+        // Set analyzing state to prevent tooltip from disappearing
+        this.isAnalyzing = true;
+        
         // Transform button into progress bar
         this.showAnalysisProgress();
         
@@ -606,12 +609,14 @@ function initializeContentAnalyzer() {
           throw new Error(response.error || 'Analysis failed');
         }
         
-        // Hide tooltip and show inline results
+        // Reset analyzing state and hide tooltip
+        this.isAnalyzing = false;
         this.hideSelectionTooltip();
         this.showInlineAnalysisResult(response.data, selectedText);
         
       } catch (error) {
         console.error('Selection analysis failed:', error);
+        this.isAnalyzing = false;
         this.showAnalysisError(error.message);
       }
     }
@@ -764,10 +769,353 @@ function initializeContentAnalyzer() {
       return 'human';
     }
 
-    showFeedbackForSelection(analysisData) {
-      // This will integrate with existing feedback system
-      console.log('Feedback for selection analysis:', analysisData);
-      // TODO: Integrate with existing feedback UI
+    async showFeedbackForSelection(analysisData) {
+      // Import FeedbackManager and FeedbackUI if not already available
+      if (!this.feedbackManager) {
+        const { FeedbackManager } = await import('../shared/feedback-manager.js');
+        const { FeedbackUI } = await import('../shared/feedback-ui.js');
+        this.feedbackManager = new FeedbackManager();
+        this.feedbackUI = new FeedbackUI(this.feedbackManager);
+      }
+
+      // Create feedback overlay
+      const feedbackOverlay = document.createElement('div');
+      feedbackOverlay.className = 'ai-detector-feedback-overlay';
+      feedbackOverlay.innerHTML = `
+        <div class="feedback-overlay-content">
+          <div class="feedback-header">
+            <h3>Analysis Feedback</h3>
+            <button class="close-btn" title="Close">&times;</button>
+          </div>
+          <div class="feedback-body">
+            <div class="analysis-summary">
+              <div class="summary-item">
+                <span class="summary-label">Our Analysis:</span>
+                <span class="summary-value">${Math.round(analysisData.likelihood)}% AI-generated</span>
+              </div>
+              <div class="summary-item">
+                <span class="summary-label">Confidence:</span>
+                <span class="summary-value">${Math.round(analysisData.confidence)}%</span>
+              </div>
+            </div>
+            ${this.getFeedbackWidgetHTML()}
+          </div>
+        </div>
+      `;
+
+      // Add event listeners
+      const closeBtn = feedbackOverlay.querySelector('.close-btn');
+      closeBtn.addEventListener('click', () => {
+        this.hideFeedbackOverlay(feedbackOverlay);
+      });
+
+      // Close on click outside
+      feedbackOverlay.addEventListener('click', (event) => {
+        if (event.target === feedbackOverlay) {
+          this.hideFeedbackOverlay(feedbackOverlay);
+        }
+      });
+
+      // Close on Escape key
+      const escapeHandler = (event) => {
+        if (event.key === 'Escape') {
+          this.hideFeedbackOverlay(feedbackOverlay);
+          document.removeEventListener('keydown', escapeHandler);
+        }
+      };
+      document.addEventListener('keydown', escapeHandler);
+
+      // Bind feedback events
+      this.bindFeedbackEvents(feedbackOverlay, analysisData);
+
+      // Add to page with animation
+      document.body.appendChild(feedbackOverlay);
+      requestAnimationFrame(() => {
+        feedbackOverlay.classList.add('show');
+      });
+    }
+
+    hideFeedbackOverlay(overlay) {
+      overlay.classList.add('hiding');
+      setTimeout(() => {
+        if (overlay.parentNode) {
+          overlay.parentNode.removeChild(overlay);
+        }
+      }, 300);
+    }
+
+    getFeedbackWidgetHTML() {
+      return `
+        <div class="feedback-section">
+          <div class="feedback-header">
+            <span class="feedback-title">💬 Help improve accuracy</span>
+            <span class="feedback-subtitle">Your feedback helps train the local model</span>
+          </div>
+          
+          <div class="feedback-rating">
+            <button class="feedback-btn feedback-thumbs-up" data-rating="thumbs_up" title="Accurate analysis">
+              <span class="feedback-icon">👍</span>
+              <span class="feedback-label">Accurate</span>
+            </button>
+            <button class="feedback-btn feedback-thumbs-down" data-rating="thumbs_down" title="Incorrect analysis">
+              <span class="feedback-icon">👎</span>
+              <span class="feedback-label">Incorrect</span>
+            </button>
+          </div>
+
+          <div class="feedback-details hidden">
+            <!-- Detailed feedback form will be inserted here -->
+          </div>
+
+          <div class="feedback-status hidden">
+            <span class="status-text">✓ Feedback received. Thank you!</span>
+          </div>
+        </div>
+      `;
+    }
+
+    bindFeedbackEvents(widget, analysisData) {
+      const ratingButtons = widget.querySelectorAll('[data-rating]');
+      ratingButtons.forEach(button => {
+        const rating = button.dataset.rating;
+        button.addEventListener('click', (e) => {
+          e.preventDefault();
+          this.handleRatingClick(rating, widget, analysisData);
+        });
+      });
+    }
+
+    async handleRatingClick(rating, widget, analysisData) {
+      // Disable rating buttons
+      const ratingButtons = widget.querySelectorAll('[data-rating]');
+      ratingButtons.forEach(btn => btn.disabled = true);
+
+      if (rating === 'thumbs_up') {
+        // Simple positive feedback
+        await this.submitFeedback({ rating }, analysisData);
+        this.showFeedbackStatus(widget, 'positive');
+      } else {
+        // Show detailed feedback form for negative ratings
+        this.showDetailedFeedback(widget, analysisData);
+      }
+    }
+
+    showDetailedFeedback(widget, analysisData) {
+      const detailsContainer = widget.querySelector('.feedback-details');
+      
+      const detailsHTML = this.getFullDetailsHTML();
+      detailsContainer.innerHTML = detailsHTML;
+      detailsContainer.classList.remove('hidden');
+
+      // Bind events for detailed form
+      this.bindDetailedFormEvents(detailsContainer, widget, analysisData);
+    }
+
+    getFullDetailsHTML() {
+      return `
+        <div class="feedback-correction">
+          <div class="correction-header">
+            <span class="correction-title">What percentage do you think is AI-generated?</span>
+          </div>
+          <div class="correction-slider-container">
+            <input type="range" class="correction-slider" min="0" max="100" value="50" id="aiPercentageSlider">
+            <div class="correction-labels">
+              <span class="correction-value">
+                AI: <span id="aiPercentageValue">50</span>% | 
+                Human: <span id="humanPercentageValue">50</span>%
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="feedback-reasons">
+          <div class="reasons-header">
+            <span class="reasons-title">Why was our analysis incorrect?</span>
+          </div>
+          <div class="reasons-categories">
+            <div class="reason-category">
+              <span class="category-title">If we said AI but it's human:</span>
+              ${this.generateReasonCheckboxes('falsePositive')}
+            </div>
+            <div class="reason-category">
+              <span class="category-title">If we said human but it's AI:</span>
+              ${this.generateReasonCheckboxes('falseNegative')}
+            </div>
+            <div class="reason-category">
+              <span class="category-title">Analysis issues:</span>
+              ${this.generateReasonCheckboxes('analysisIssues')}
+            </div>
+          </div>
+        </div>
+
+        <div class="feedback-confidence">
+          <span class="confidence-title">How confident are you in your assessment?</span>
+          <div class="confidence-buttons">
+            <button class="confidence-btn" data-confidence="low">Low</button>
+            <button class="confidence-btn" data-confidence="medium">Medium</button>
+            <button class="confidence-btn" data-confidence="high">High</button>
+          </div>
+        </div>
+
+        <div class="feedback-actions">
+          <button class="feedback-submit-btn">Submit Feedback</button>
+          <button class="feedback-skip-btn">Skip</button>
+        </div>
+      `;
+    }
+
+    generateReasonCheckboxes(category) {
+      const feedbackReasons = {
+        falsePositive: [
+          'Obviously human writing style',
+          'Contains personal experiences/emotions',
+          'Has natural imperfections/typos',
+          'Domain expertise too specific for AI',
+          'Writing too creative/unique'
+        ],
+        falseNegative: [
+          'Too perfect/formulaic writing',
+          'Generic phrasing and transitions',
+          'Lacks personal voice',
+          'Repetitive vocabulary',
+          'Overly structured'
+        ],
+        analysisIssues: [
+          'Wrong content analyzed',
+          'Text too short/long',
+          'Mixed human/AI content',
+          'Technical/formatting issues',
+          'Language not well supported'
+        ]
+      };
+
+      return feedbackReasons[category]
+        .map((reason, index) => `
+          <label class="reason-checkbox">
+            <input type="checkbox" value="${reason}" data-category="${category}">
+            <span class="checkbox-text">${reason}</span>
+          </label>
+        `).join('');
+    }
+
+    bindDetailedFormEvents(container, widget, analysisData) {
+      // Slider events
+      const slider = container.querySelector('.correction-slider');
+      if (slider) {
+        slider.addEventListener('input', (e) => {
+          this.updateSliderLabels(e.target.value);
+        });
+      }
+
+      // Confidence buttons
+      const confidenceButtons = container.querySelectorAll('.confidence-btn');
+      confidenceButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          confidenceButtons.forEach(b => b.classList.remove('selected'));
+          e.target.classList.add('selected');
+        });
+      });
+
+      // Submit button
+      const submitBtn = container.querySelector('.feedback-submit-btn');
+      if (submitBtn) {
+        submitBtn.addEventListener('click', () => {
+          this.submitDetailedFeedback(container, widget, analysisData);
+        });
+      }
+
+      // Skip button
+      const skipBtn = container.querySelector('.feedback-skip-btn');
+      if (skipBtn) {
+        skipBtn.addEventListener('click', () => {
+          this.skipFeedback(widget);
+        });
+      }
+    }
+
+    updateSliderLabels(value) {
+      const aiValue = parseInt(value);
+      const humanValue = 100 - aiValue;
+
+      const aiSpan = document.getElementById('aiPercentageValue');
+      const humanSpan = document.getElementById('humanPercentageValue');
+      if (aiSpan) aiSpan.textContent = aiValue;
+      if (humanSpan) humanSpan.textContent = humanValue;
+    }
+
+    async submitDetailedFeedback(container, widget, analysisData) {
+      const slider = container.querySelector('.correction-slider');
+      const aiPercentage = slider ? parseInt(slider.value) : 50;
+
+      const checkboxes = container.querySelectorAll('input[type="checkbox"]:checked');
+      const selectedReasons = Array.from(checkboxes).map(cb => cb.value);
+
+      const selectedConfidenceBtn = container.querySelector('.confidence-btn.selected');
+      const confidence = selectedConfidenceBtn ? selectedConfidenceBtn.dataset.confidence : 'medium';
+
+      const feedbackData = {
+        rating: 'thumbs_down',
+        correction: {
+          aiPercentage: aiPercentage,
+          humanPercentage: 100 - aiPercentage,
+          confidence: confidence === 'low' ? 25 : confidence === 'high' ? 75 : 50
+        },
+        reasons: selectedReasons
+      };
+
+      await this.submitFeedback(feedbackData, analysisData);
+      this.showFeedbackStatus(widget, 'negative');
+    }
+
+    skipFeedback(widget) {
+      this.showFeedbackStatus(widget, 'skipped');
+    }
+
+    async submitFeedback(feedbackData, analysisData) {
+      try {
+        if (!this.feedbackManager) {
+          const { FeedbackManager } = await import('../shared/feedback-manager.js');
+          this.feedbackManager = new FeedbackManager();
+        }
+        
+        // Create feedback record
+        await this.feedbackManager.createFeedbackRecord({
+          analysis: analysisData,
+          feedback: feedbackData,
+          contentType: 'text-selection'
+        });
+        
+        console.log('Feedback submitted successfully');
+      } catch (error) {
+        console.error('Failed to submit feedback:', error);
+      }
+    }
+
+    showFeedbackStatus(widget, type) {
+      const rating = widget.querySelector('.feedback-rating');
+      const details = widget.querySelector('.feedback-details');
+      const status = widget.querySelector('.feedback-status');
+
+      if (rating) rating.style.display = 'none';
+      if (details) details.classList.add('hidden');
+      if (status) {
+        status.classList.remove('hidden');
+        
+        if (type === 'positive') {
+          status.innerHTML = '<span class="status-text">✓ Feedback received. Thank you!</span>';
+        } else if (type === 'negative') {
+          status.innerHTML = '<span class="status-text">✓ Detailed feedback received. This helps improve accuracy!</span>';
+        } else {
+          status.innerHTML = '<span class="status-text">○ Feedback skipped</span>';
+        }
+      }
+
+      // Auto-hide after delay
+      setTimeout(() => {
+        if (widget.parentNode) {
+          widget.style.opacity = '0.5';
+        }
+      }, 3000);
     }
 
     showDetailedResults(analysisData) {
@@ -1845,6 +2193,351 @@ function initializeContentAnalyzer() {
 
         .ai-detector-inline-result .btn-secondary:hover {
           background: #f3f4f6 !important;
+        }
+
+        /* Feedback Overlay Styles */
+        .ai-detector-feedback-overlay {
+          position: fixed !important;
+          top: 0 !important;
+          left: 0 !important;
+          width: 100% !important;
+          height: 100% !important;
+          background: rgba(0, 0, 0, 0.5) !important;
+          z-index: 10002 !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          opacity: 0 !important;
+          transition: opacity 0.3s ease-out !important;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+        }
+
+        .ai-detector-feedback-overlay.show {
+          opacity: 1 !important;
+        }
+
+        .ai-detector-feedback-overlay.hiding {
+          opacity: 0 !important;
+        }
+
+        .ai-detector-feedback-overlay .feedback-overlay-content {
+          background: white !important;
+          border-radius: 12px !important;
+          box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25) !important;
+          max-width: 520px !important;
+          width: 90% !important;
+          max-height: 80vh !important;
+          overflow: auto !important;
+          transform: scale(0.9) translateY(20px) !important;
+          transition: transform 0.3s ease-out !important;
+        }
+
+        .ai-detector-feedback-overlay.show .feedback-overlay-content {
+          transform: scale(1) translateY(0) !important;
+        }
+
+        .ai-detector-feedback-overlay .feedback-header {
+          padding: 20px 24px 0 24px !important;
+          display: flex !important;
+          justify-content: space-between !important;
+          align-items: center !important;
+          border-bottom: 1px solid #f3f4f6 !important;
+          margin-bottom: 20px !important;
+        }
+
+        .ai-detector-feedback-overlay .feedback-header h3 {
+          margin: 0 !important;
+          font-size: 18px !important;
+          font-weight: 600 !important;
+          color: #111827 !important;
+        }
+
+        .ai-detector-feedback-overlay .close-btn {
+          background: none !important;
+          border: none !important;
+          font-size: 24px !important;
+          color: #6b7280 !important;
+          cursor: pointer !important;
+          padding: 0 !important;
+          width: 32px !important;
+          height: 32px !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          border-radius: 6px !important;
+          transition: background-color 0.2s ease !important;
+        }
+
+        .ai-detector-feedback-overlay .close-btn:hover {
+          background: #f3f4f6 !important;
+          color: #374151 !important;
+        }
+
+        .ai-detector-feedback-overlay .feedback-body {
+          padding: 0 24px 24px 24px !important;
+        }
+
+        .ai-detector-feedback-overlay .analysis-summary {
+          background: #f9fafb !important;
+          padding: 16px !important;
+          border-radius: 8px !important;
+          margin-bottom: 20px !important;
+          display: flex !important;
+          gap: 20px !important;
+        }
+
+        .ai-detector-feedback-overlay .summary-item {
+          display: flex !important;
+          flex-direction: column !important;
+        }
+
+        .ai-detector-feedback-overlay .summary-label {
+          font-size: 12px !important;
+          color: #6b7280 !important;
+          font-weight: 500 !important;
+          margin-bottom: 4px !important;
+        }
+
+        .ai-detector-feedback-overlay .summary-value {
+          font-size: 14px !important;
+          color: #374151 !important;
+          font-weight: 600 !important;
+        }
+
+        /* Feedback Section Styles */
+        .ai-detector-feedback-overlay .feedback-section {
+          display: flex !important;
+          flex-direction: column !important;
+          gap: 16px !important;
+        }
+
+        .ai-detector-feedback-overlay .feedback-section .feedback-header {
+          text-align: center !important;
+          padding: 0 !important;
+          border: none !important;
+          margin: 0 !important;
+        }
+
+        .ai-detector-feedback-overlay .feedback-title {
+          font-size: 16px !important;
+          font-weight: 600 !important;
+          color: #374151 !important;
+          display: block !important;
+          margin-bottom: 4px !important;
+        }
+
+        .ai-detector-feedback-overlay .feedback-subtitle {
+          font-size: 13px !important;
+          color: #6b7280 !important;
+          display: block !important;
+        }
+
+        .ai-detector-feedback-overlay .feedback-rating {
+          display: flex !important;
+          gap: 12px !important;
+          justify-content: center !important;
+        }
+
+        .ai-detector-feedback-overlay .feedback-btn {
+          flex: 1 !important;
+          display: flex !important;
+          flex-direction: column !important;
+          align-items: center !important;
+          gap: 8px !important;
+          padding: 16px 12px !important;
+          border: 2px solid #e5e7eb !important;
+          border-radius: 8px !important;
+          background: white !important;
+          cursor: pointer !important;
+          transition: all 0.2s ease !important;
+          font-size: 14px !important;
+        }
+
+        .ai-detector-feedback-overlay .feedback-btn:hover {
+          border-color: #3b82f6 !important;
+          background: #f8fafc !important;
+        }
+
+        .ai-detector-feedback-overlay .feedback-btn:disabled {
+          opacity: 0.5 !important;
+          cursor: not-allowed !important;
+        }
+
+        .ai-detector-feedback-overlay .feedback-icon {
+          font-size: 24px !important;
+        }
+
+        .ai-detector-feedback-overlay .feedback-label {
+          font-weight: 500 !important;
+          color: #374151 !important;
+        }
+
+        /* Detailed Feedback Styles */
+        .ai-detector-feedback-overlay .feedback-correction {
+          margin-bottom: 20px !important;
+        }
+
+        .ai-detector-feedback-overlay .correction-title {
+          font-size: 14px !important;
+          font-weight: 600 !important;
+          color: #374151 !important;
+          display: block !important;
+          margin-bottom: 12px !important;
+        }
+
+        .ai-detector-feedback-overlay .correction-slider-container {
+          background: #f9fafb !important;
+          padding: 16px !important;
+          border-radius: 8px !important;
+        }
+
+        .ai-detector-feedback-overlay .correction-slider {
+          width: 100% !important;
+          height: 8px !important;
+          border-radius: 4px !important;
+          background: #e5e7eb !important;
+          outline: none !important;
+          margin-bottom: 8px !important;
+        }
+
+        .ai-detector-feedback-overlay .correction-value {
+          font-size: 13px !important;
+          color: #6b7280 !important;
+          text-align: center !important;
+          display: block !important;
+        }
+
+        .ai-detector-feedback-overlay .feedback-reasons {
+          margin-bottom: 20px !important;
+        }
+
+        .ai-detector-feedback-overlay .reasons-title {
+          font-size: 14px !important;
+          font-weight: 600 !important;
+          color: #374151 !important;
+          display: block !important;
+          margin-bottom: 12px !important;
+        }
+
+        .ai-detector-feedback-overlay .reason-category {
+          margin-bottom: 16px !important;
+        }
+
+        .ai-detector-feedback-overlay .category-title {
+          font-size: 13px !important;
+          font-weight: 500 !important;
+          color: #6b7280 !important;
+          display: block !important;
+          margin-bottom: 8px !important;
+        }
+
+        .ai-detector-feedback-overlay .reason-checkbox {
+          display: flex !important;
+          align-items: center !important;
+          gap: 8px !important;
+          margin-bottom: 6px !important;
+          cursor: pointer !important;
+        }
+
+        .ai-detector-feedback-overlay .reason-checkbox input {
+          margin: 0 !important;
+        }
+
+        .ai-detector-feedback-overlay .checkbox-text {
+          font-size: 13px !important;
+          color: #374151 !important;
+        }
+
+        .ai-detector-feedback-overlay .feedback-confidence {
+          margin-bottom: 20px !important;
+        }
+
+        .ai-detector-feedback-overlay .confidence-title {
+          font-size: 14px !important;
+          font-weight: 600 !important;
+          color: #374151 !important;
+          display: block !important;
+          margin-bottom: 12px !important;
+        }
+
+        .ai-detector-feedback-overlay .confidence-buttons {
+          display: flex !important;
+          gap: 8px !important;
+        }
+
+        .ai-detector-feedback-overlay .confidence-btn {
+          flex: 1 !important;
+          padding: 8px 12px !important;
+          border: 1px solid #e5e7eb !important;
+          border-radius: 6px !important;
+          background: white !important;
+          cursor: pointer !important;
+          font-size: 13px !important;
+          font-weight: 500 !important;
+          color: #374151 !important;
+          transition: all 0.2s ease !important;
+        }
+
+        .ai-detector-feedback-overlay .confidence-btn:hover {
+          border-color: #3b82f6 !important;
+          background: #f8fafc !important;
+        }
+
+        .ai-detector-feedback-overlay .confidence-btn.selected {
+          border-color: #3b82f6 !important;
+          background: #3b82f6 !important;
+          color: white !important;
+        }
+
+        .ai-detector-feedback-overlay .feedback-actions {
+          display: flex !important;
+          gap: 12px !important;
+          justify-content: flex-end !important;
+        }
+
+        .ai-detector-feedback-overlay .feedback-submit-btn {
+          background: #3b82f6 !important;
+          color: white !important;
+          border: none !important;
+          border-radius: 6px !important;
+          padding: 10px 20px !important;
+          font-size: 14px !important;
+          font-weight: 500 !important;
+          cursor: pointer !important;
+          transition: background-color 0.2s ease !important;
+        }
+
+        .ai-detector-feedback-overlay .feedback-submit-btn:hover {
+          background: #2563eb !important;
+        }
+
+        .ai-detector-feedback-overlay .feedback-skip-btn {
+          background: #f9fafb !important;
+          color: #374151 !important;
+          border: 1px solid #d1d5db !important;
+          border-radius: 6px !important;
+          padding: 10px 20px !important;
+          font-size: 14px !important;
+          font-weight: 500 !important;
+          cursor: pointer !important;
+          transition: background-color 0.2s ease !important;
+        }
+
+        .ai-detector-feedback-overlay .feedback-skip-btn:hover {
+          background: #f3f4f6 !important;
+        }
+
+        .ai-detector-feedback-overlay .feedback-status {
+          text-align: center !important;
+          padding: 20px !important;
+          background: #f0f9ff !important;
+          border-radius: 8px !important;
+        }
+
+        .ai-detector-feedback-overlay .status-text {
+          font-size: 14px !important;
+          color: #1e40af !important;
+          font-weight: 500 !important;
         }
       `;
       
