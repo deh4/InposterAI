@@ -21,6 +21,11 @@ class ContentAnalyzer {
   async handleMessage(request, sender, sendResponse) {
     try {
       switch (request.action) {
+        case 'ping': {
+          // Simple ping to test if content script is alive
+          sendResponse({ success: true, message: 'Content script is active' });
+          break;
+        }
         case 'extractContent': {
           const content = this.extractArticleContent();
           sendResponse({ success: true, data: content });
@@ -367,9 +372,11 @@ class ContentAnalyzer {
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
     new ContentAnalyzer();
+    console.log('AI Content Detector content script initialized (DOM loaded)');
   });
 } else {
   new ContentAnalyzer();
+  console.log('AI Content Detector content script initialized (DOM ready)');
 }
 
-console.log('AI Content Detector content script loaded'); 
+console.log('AI Content Detector content script loaded on:', window.location.href); 

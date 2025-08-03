@@ -7,7 +7,8 @@
   "permissions": [
     "activeTab",
     "storage",
-    "scripting"
+    "scripting",
+    "tabs"
   ],
   
   "host_permissions": [
@@ -25,7 +26,12 @@
       "matches": ["<all_urls>"],
       "js": ["content/content.js"],
       "run_at": "document_idle",
-      "all_frames": false
+      "all_frames": false,
+      "exclude_matches": [
+        "*://chrome://*",
+        "*://opera://*",
+        "*://chrome-extension://*"
+      ]
     }
   ],
   

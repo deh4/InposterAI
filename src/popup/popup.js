@@ -100,20 +100,73 @@ class PopupController {
     this.showAnalyzing();
 
     try {
-      // Request analysis from content script
+      // Check if we have a valid tab
+      if (!this.currentTab || !this.currentTab.id) {
+        throw new Error('No active tab found');
+      }
+
+      // Check if the tab URL is valid for content script injection
+      if (this.currentTab.url.startsWith('chrome://') || 
+          this.currentTab.url.startsWith('chrome-extension://') ||
+          this.currentTab.url.startsWith('opera://')) {
+        throw new Error('Cannot analyze browser internal pages. Please navigate to a website.');
+      }
+
+      console.log('Attempting to analyze tab:', this.currentTab.url);
+
+      // Try to ping the content script first
+      try {
+        const pingResponse = await chrome.tabs.sendMessage(this.currentTab.id, {
+          action: 'ping'
+        });
+        console.log('Content script ping response:', pingResponse);
+      } catch (pingError) {
+        console.warn('Content script not responding, attempting to inject...');
+        
+        // Try to inject content script manually
+        await this.ensureContentScriptLoaded();
+      }
+
+      // Now try the actual analysis
       const response = await chrome.tabs.sendMessage(this.currentTab.id, {
         action: 'analyzeCurrentPage'
       });
 
-      if (response.success) {
+      if (response && response.success) {
         this.displayAnalysisResult(response.data);
       } else {
-        this.showError(response.error);
+        this.showError(response?.error || 'Analysis failed');
       }
     } catch (error) {
-      this.showError(error.message || 'Failed to analyze page content');
+      console.error('Analysis error:', error);
+      let errorMessage = error.message;
+      
+      if (error.message.includes('Could not establish connection')) {
+        errorMessage = 'Content script not loaded. Try refreshing the page and analyzing again.';
+      } else if (error.message.includes('Receiving end does not exist')) {
+        errorMessage = 'Extension not properly loaded on this page. Please refresh and try again.';
+      }
+      
+      this.showError(errorMessage);
     } finally {
       this.isAnalyzing = false;
+    }
+  }
+
+  async ensureContentScriptLoaded() {
+    try {
+      // Inject content script if it's not already loaded
+      await chrome.scripting.executeScript({
+        target: { tabId: this.currentTab.id },
+        files: ['content/content.js']
+      });
+      
+      // Wait a moment for script to initialize
+      await new Promise(resolve => setTimeout(resolve, 500));
+      console.log('Content script injected successfully');
+    } catch (error) {
+      console.error('Failed to inject content script:', error);
+      throw new Error('Failed to load content script on this page');
     }
   }
 
