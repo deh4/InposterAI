@@ -396,10 +396,22 @@ function initializeContentAnalyzer() {
     }
 
     setupSelectionHandler() {
-      // Handle text selection events
+      // Handle text selection events with delay to avoid browser UI conflicts
       document.addEventListener('mouseup', this.handleSelection.bind(this));
       document.addEventListener('keyup', this.handleSelection.bind(this));
       document.addEventListener('selectionchange', this.handleSelectionChange.bind(this));
+      
+      // Add keyboard shortcut (Ctrl/Cmd + Shift + A) for analysis
+      document.addEventListener('keydown', (event) => {
+        if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === 'A') {
+          event.preventDefault();
+          const selection = window.getSelection();
+          const selectedText = selection.toString().trim();
+          if (selectedText.length >= 20) {
+            this.performQuickAnalysis(selectedText);
+          }
+        }
+      });
       
       // Hide tooltip when clicking elsewhere
       document.addEventListener('mousedown', (event) => {
@@ -422,10 +434,10 @@ function initializeContentAnalyzer() {
         clearTimeout(this.selectionTimeout);
       }
       
-      // Add a small delay to ensure selection is finalized
+      // Add longer delay to let browser UI settle first
       this.selectionTimeout = setTimeout(() => {
         this.checkAndShowTooltip();
-      }, 150);
+      }, 800);
     }
 
     handleSelectionChange() {
@@ -434,9 +446,10 @@ function initializeContentAnalyzer() {
         clearTimeout(this.selectionTimeout);
       }
       
+      // Shorter delay for keyboard-based selections
       this.selectionTimeout = setTimeout(() => {
         this.checkAndShowTooltip();
-      }, 150);
+      }, 300);
     }
 
     checkAndShowTooltip() {
@@ -464,7 +477,7 @@ function initializeContentAnalyzer() {
       this.selectionTooltip.className = 'ai-detector-selection-tooltip';
       this.selectionTooltip.innerHTML = `
         <div class="tooltip-content">
-          <button class="analyze-btn" title="Quick AI Analysis">
+          <button class="analyze-btn" title="Quick AI Analysis - or press Ctrl+Shift+A">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path d="M12 2L2 7V10C2 16 6 20.88 11.88 22L12 22L12.12 22C18 20.88 22 16 22 10V7L12 2Z" 
                     stroke="currentColor" stroke-width="2" fill="none"/>
@@ -473,16 +486,38 @@ function initializeContentAnalyzer() {
             <span>Quick Analyze</span>
           </button>
           <div class="word-count">${selectedText.split(/\s+/).length} words</div>
+          <div class="keyboard-hint">⌘⇧A</div>
         </div>
       `;
       
-      // Position tooltip above selection
+      // Position tooltip to avoid browser UI conflicts
       const scrollY = window.scrollY || window.pageYOffset;
       const scrollX = window.scrollX || window.pageXOffset;
+      const viewportHeight = window.innerHeight;
+      const viewportWidth = window.innerWidth;
+      
+      // Calculate optimal position - prefer above, but adjust if near edges
+      let tooltipTop = rect.top + scrollY - 60; // More space from selection
+      let tooltipLeft = rect.left + scrollX + (rect.width / 2);
+      
+      // If selection is near top of viewport, show below instead
+      if (rect.top < 100) {
+        tooltipTop = rect.bottom + scrollY + 20;
+        this.selectionTooltip.style.transform = 'translateX(-50%) translateY(8px)';
+      } else {
+        this.selectionTooltip.style.transform = 'translateX(-50%) translateY(-100%) translateY(-8px)';
+      }
+      
+      // Adjust horizontal position if near viewport edges
+      if (tooltipLeft < 150) {
+        tooltipLeft = 150;
+      } else if (tooltipLeft > viewportWidth - 150) {
+        tooltipLeft = viewportWidth - 150;
+      }
       
       this.selectionTooltip.style.position = 'absolute';
-      this.selectionTooltip.style.left = `${rect.left + scrollX + (rect.width / 2)}px`;
-      this.selectionTooltip.style.top = `${rect.top + scrollY - 10}px`;
+      this.selectionTooltip.style.left = `${tooltipLeft}px`;
+      this.selectionTooltip.style.top = `${tooltipTop}px`;
       this.selectionTooltip.style.zIndex = '10000';
       
       // Add event listener for analyze button
@@ -1350,12 +1385,13 @@ function initializeContentAnalyzer() {
         .ai-detector-selection-tooltip .tooltip-content {
           background: #1f2937 !important;
           border-radius: 8px !important;
-          padding: 8px 12px !important;
+          padding: 10px 14px !important;
           display: flex !important;
           align-items: center !important;
-          gap: 8px !important;
-          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2) !important;
+          gap: 10px !important;
+          box-shadow: 0 15px 35px rgba(0, 0, 0, 0.3) !important;
           position: relative !important;
+          border: 2px solid #3b82f6 !important;
         }
 
         .ai-detector-selection-tooltip .tooltip-content::after {
@@ -1405,6 +1441,16 @@ function initializeContentAnalyzer() {
         .ai-detector-selection-tooltip .word-count {
           color: #9ca3af !important;
           font-size: 11px !important;
+          white-space: nowrap !important;
+        }
+
+        .ai-detector-selection-tooltip .keyboard-hint {
+          color: #6b7280 !important;
+          font-size: 10px !important;
+          font-family: monospace !important;
+          background: rgba(0, 0, 0, 0.3) !important;
+          padding: 2px 6px !important;
+          border-radius: 4px !important;
           white-space: nowrap !important;
         }
 
