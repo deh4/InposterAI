@@ -21,14 +21,14 @@
   ],
   
   "background": {
-    "service_worker": "background/background-refactored.js",
+    "service_worker": "background/background.js",
     "type": "module"
   },
   
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content/content-refactored.js"],
+      "js": ["content/content.js"],
       "run_at": "document_idle",
       "all_frames": false,
       "exclude_matches": [

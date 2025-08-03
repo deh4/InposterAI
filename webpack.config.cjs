@@ -8,9 +8,9 @@ module.exports = {
   devtool: isProduction ? false : 'source-map',
   
   entry: {
-    background: './src/background/background.js',
-    content: './src/content/content.js',
-    popup: './src/popup/popup.js'
+    background: './src/background/background-refactored.js',
+    content: './src/content/content-refactored.js',
+    popup: './src/popup/popup-refactored.js'
   },
   
   output: {
