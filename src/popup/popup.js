@@ -147,7 +147,7 @@ class PopupController {
       });
 
       if (response && response.success) {
-        this.displayAnalysisResult(response.data);
+        await this.displayAnalysisResult(response.data);
       } else {
         this.showError(response?.error || 'Analysis failed');
       }
@@ -201,7 +201,7 @@ class PopupController {
     noContentMessage.classList.add('hidden');
   }
 
-  displayAnalysisResult(data) {
+  async displayAnalysisResult(data) {
     const { content, analysis } = data;
 
     // Update UI elements
@@ -251,7 +251,7 @@ class PopupController {
     document.getElementById('noContentMessage').classList.add('hidden');
 
     // Create and store feedback record
-    this.createFeedbackRecord(data);
+    await this.createFeedbackRecord(data);
 
     // Add feedback widget
     this.addFeedbackWidget();
@@ -259,7 +259,7 @@ class PopupController {
     this.resetAnalyzeButton();
   }
 
-  createFeedbackRecord(data) {
+  async createFeedbackRecord(data) {
     try {
       // Collect system info
       const systemInfo = {
@@ -280,15 +280,15 @@ class PopupController {
       };
 
       // Create feedback record
-      this.currentAnalysisRecord = this.feedbackManager.createFeedbackRecord(
+      this.currentAnalysisRecord = await this.feedbackManager.createFeedbackRecord(
         analysisData,
         systemInfo
       );
 
       // Store the record
-      const records = this.feedbackManager.getFeedbackRecords();
+      const records = await this.feedbackManager.getFeedbackRecords();
       records.push(this.currentAnalysisRecord);
-      this.feedbackManager.storeFeedbackRecords(records);
+      await this.feedbackManager.storeFeedbackRecords(records);
 
     } catch (error) {
       console.error('Failed to create feedback record:', error);
