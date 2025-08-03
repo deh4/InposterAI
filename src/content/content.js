@@ -490,29 +490,24 @@ function initializeContentAnalyzer() {
         </div>
       `;
       
-      // Position tooltip to avoid browser UI conflicts
+      // Position tooltip below the end of the selection
       const scrollY = window.scrollY || window.pageYOffset;
       const scrollX = window.scrollX || window.pageXOffset;
-      const viewportHeight = window.innerHeight;
       const viewportWidth = window.innerWidth;
       
-      // Calculate optimal position - prefer above, but adjust if near edges
-      let tooltipTop = rect.top + scrollY - 60; // More space from selection
-      let tooltipLeft = rect.left + scrollX + (rect.width / 2);
+      // Position below the selection (at the end of the last word)
+      let tooltipTop = rect.bottom + scrollY + 12; // Small gap below selection
+      let tooltipLeft = rect.right + scrollX; // Align with end of selection
       
-      // If selection is near top of viewport, show below instead
-      if (rect.top < 100) {
-        tooltipTop = rect.bottom + scrollY + 20;
-        this.selectionTooltip.style.transform = 'translateX(-50%) translateY(8px)';
-      } else {
-        this.selectionTooltip.style.transform = 'translateX(-50%) translateY(-100%) translateY(-8px)';
-      }
+      // Always show below selection with upward pointing arrow
+      this.selectionTooltip.style.transform = 'translateX(-50%) translateY(0)';
       
       // Adjust horizontal position if near viewport edges
-      if (tooltipLeft < 150) {
-        tooltipLeft = 150;
-      } else if (tooltipLeft > viewportWidth - 150) {
-        tooltipLeft = viewportWidth - 150;
+      const tooltipWidth = 200; // Approximate tooltip width
+      if (tooltipLeft < tooltipWidth / 2 + 20) {
+        tooltipLeft = tooltipWidth / 2 + 20;
+      } else if (tooltipLeft > viewportWidth - tooltipWidth / 2 - 20) {
+        tooltipLeft = viewportWidth - tooltipWidth / 2 - 20;
       }
       
       this.selectionTooltip.style.position = 'absolute';
@@ -1365,20 +1360,20 @@ function initializeContentAnalyzer() {
           position: absolute !important;
           z-index: 10000 !important;
           opacity: 0 !important;
-          transform: translateX(-50%) translateY(-100%) translateY(-8px) !important;
+          transform: translateX(-50%) translateY(8px) !important;
           transition: opacity 0.2s ease-out, transform 0.2s ease-out !important;
           pointer-events: none !important;
         }
 
         .ai-detector-selection-tooltip.show {
           opacity: 1 !important;
-          transform: translateX(-50%) translateY(-100%) translateY(-4px) !important;
+          transform: translateX(-50%) translateY(4px) !important;
           pointer-events: auto !important;
         }
 
         .ai-detector-selection-tooltip.hiding {
           opacity: 0 !important;
-          transform: translateX(-50%) translateY(-100%) translateY(-12px) !important;
+          transform: translateX(-50%) translateY(12px) !important;
           pointer-events: none !important;
         }
 
@@ -1397,14 +1392,14 @@ function initializeContentAnalyzer() {
         .ai-detector-selection-tooltip .tooltip-content::after {
           content: '' !important;
           position: absolute !important;
-          top: 100% !important;
+          bottom: 100% !important;
           left: 50% !important;
           transform: translateX(-50%) !important;
           width: 0 !important;
           height: 0 !important;
           border-left: 6px solid transparent !important;
           border-right: 6px solid transparent !important;
-          border-top: 6px solid #1f2937 !important;
+          border-bottom: 6px solid #3b82f6 !important;
         }
 
         .ai-detector-selection-tooltip .analyze-btn {
