@@ -397,7 +397,7 @@ function initializeContentAnalyzer() {
 
     setupSelectionHandler() {
       // Handle text selection events with delay to avoid browser UI conflicts
-      document.addEventListener('mouseup', this.handleSelection.bind(this));
+      document.addEventListener('mouseup', this.handleSelection.bind(this), { passive: true });
       document.addEventListener('keyup', this.handleSelection.bind(this));
       document.addEventListener('selectionchange', this.handleSelectionChange.bind(this));
       
@@ -430,7 +430,7 @@ function initializeContentAnalyzer() {
         if (this.selectionTooltip && !this.isAnalyzing && !this.analysisModal) {
           this.hideSelectionTooltip();
         }
-      });
+      }, { passive: true });
     }
 
     handleSelection(event) {
@@ -460,21 +460,27 @@ function initializeContentAnalyzer() {
     checkAndShowTooltip() {
       // Don't show tooltip if modal is open or we're analyzing
       if (this.analysisModal || this.isAnalyzing) {
+        console.log('Tooltip blocked: modal or analyzing active');
         return;
       }
       
       const selection = window.getSelection();
       const selectedText = selection.toString().trim();
       
+      console.log('checkAndShowTooltip - Selected text length:', selectedText.length);
+      
       // Only show tooltip for meaningful text selections (minimum 20 characters)
       if (selectedText.length >= 20 && selectedText.length <= 5000) {
+        console.log('Showing tooltip for selection');
         this.showSelectionTooltip(selection, selectedText);
       } else {
+        console.log('Text too short/long for tooltip:', selectedText.length);
         this.hideSelectionTooltip();
       }
     }
 
     showSelectionTooltip(selection, selectedText) {
+      console.log('Creating tooltip for text:', selectedText.substring(0, 50));
       // Hide existing tooltip first
       this.hideSelectionTooltip();
       
@@ -505,19 +511,24 @@ function initializeContentAnalyzer() {
       const scrollX = window.scrollX || window.pageXOffset;
       const viewportWidth = window.innerWidth;
       
-      // Position below the selection (at the end of the last word)
+      // Position tooltip right after the last selected character
       let tooltipTop = rect.bottom + scrollY + 12; // Small gap below selection
-      let tooltipLeft = rect.right + scrollX; // Align with end of selection
+      let tooltipLeft = rect.right + scrollX + 8; // Start right after the last character with small gap
       
-      // Always show below selection with upward pointing arrow
-      this.selectionTooltip.style.transform = 'translateX(-50%) translateY(0)';
+      // No horizontal centering - we want it to start right after the selection
+      this.selectionTooltip.style.transform = 'translateY(0)';
       
-      // Adjust horizontal position if near viewport edges
+      // Adjust horizontal position if tooltip would go off-screen
       const tooltipWidth = 200; // Approximate tooltip width
-      if (tooltipLeft < tooltipWidth / 2 + 20) {
-        tooltipLeft = tooltipWidth / 2 + 20;
-      } else if (tooltipLeft > viewportWidth - tooltipWidth / 2 - 20) {
-        tooltipLeft = viewportWidth - tooltipWidth / 2 - 20;
+      if (tooltipLeft + tooltipWidth > viewportWidth - 20) {
+        // If tooltip would overflow right edge, position it to the left of selection
+        tooltipLeft = rect.left + scrollX - tooltipWidth - 8;
+        
+        // If that would overflow left edge, center it over the selection
+        if (tooltipLeft < 20) {
+          tooltipLeft = rect.left + scrollX + (rect.width / 2);
+          this.selectionTooltip.style.transform = 'translateX(-50%) translateY(0)';
+        }
       }
       
       this.selectionTooltip.style.position = 'absolute';
@@ -528,6 +539,7 @@ function initializeContentAnalyzer() {
       // Add event listener for analyze button
       const analyzeBtn = this.selectionTooltip.querySelector('.analyze-btn');
       analyzeBtn.addEventListener('click', (event) => {
+        console.log('Tooltip analyze button clicked!');
         event.preventDefault();
         event.stopPropagation();
         // Immediately hide tooltip to prevent it from lingering
@@ -1074,6 +1086,7 @@ function initializeContentAnalyzer() {
     }
 
     async performSelectionAnalysis(selectedText) {
+      console.log('performSelectionAnalysis called with text:', selectedText.substring(0, 50));
       try {
         // Set analyzing state to prevent tooltip from disappearing
         this.isAnalyzing = true;
@@ -1082,26 +1095,30 @@ function initializeContentAnalyzer() {
         this.showAnalysisModal(selectedText);
         
         // Use the same analysis system as the toolbar
+        console.log('Sending analysis request to background script...');
         const response = await chrome.runtime.sendMessage({
           action: 'analyzeText',
           text: selectedText,
-          metadata: {
-            url: window.location.href,
-            title: document.title,
-            wordCount: selectedText.split(/\s+/).length,
-            source: 'text-selection',
-            language: document.documentElement.lang || 'unknown',
-            domain: window.location.hostname,
-            readingTime: Math.ceil(selectedText.split(/\s+/).length / 200),
-            contentContext: {
-              selectionLength: selectedText.length,
-              isPartialContent: true
+          options: {
+            metadata: {
+              url: window.location.href,
+              title: document.title,
+              wordCount: selectedText.split(/\s+/).length,
+              source: 'text-selection',
+              language: document.documentElement.lang || 'unknown',
+              domain: window.location.hostname,
+              readingTime: Math.ceil(selectedText.split(/\s+/).length / 200),
+              contentContext: {
+                selectionLength: selectedText.length,
+                isPartialContent: true
+              }
             }
           }
         });
+        console.log('Received response from background:', response);
         
-        if (!response.success) {
-          throw new Error(response.error || 'Analysis failed');
+        if (!response || !response.success) {
+          throw new Error(response?.error || 'Analysis failed - no response from background');
         }
         
         // Reset analyzing state and show results in modal
@@ -2845,7 +2862,7 @@ function initializeContentAnalyzer() {
           text-align: center !important;
         }
 
-        /* Reuse popup analysis styles in modal */
+        /* Analysis modal styles */
         .ai-detector-analysis-modal .analysis-result {
           padding: 0 24px !important;
         }
@@ -3575,4 +3592,15 @@ function initializeContentAnalyzer() {
   }
 
   console.log('AI Content Detector content script loaded on:', window.location.href);
+  
+  // Test background script connection
+  setTimeout(async () => {
+    try {
+      console.log('Testing background script connection...');
+      const response = await chrome.runtime.sendMessage({ action: 'ping' });
+      console.log('Background script response:', response);
+    } catch (error) {
+      console.error('Background script connection failed:', error);
+    }
+  }, 1000);
 } 

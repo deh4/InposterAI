@@ -34,17 +34,9 @@
                     </div>
 
                     <div class="setting-group">
-                        <label for="ollama-model">Available Models:</label>
-                        <select id="ollama-model">
-                            <option value="">Loading models...</option>
-                        </select>
-                        <button id="refresh-models" class="btn-secondary">Refresh</button>
-                    </div>
-
-                    <div class="setting-group">
                         <label>Model Information:</label>
                         <div id="model-info" class="info-display">
-                            <span class="placeholder">Select a model to view details</span>
+                            <span class="placeholder">Model selection moved to Analysis Preferences section</span>
                         </div>
                     </div>
                 </div>
@@ -62,14 +54,7 @@
                         </small>
                     </div>
 
-                    <div class="setting-group">
-                        <label for="google-model">Google AI Model:</label>
-                        <select id="google-model">
-                            <option value="gemini-pro">Gemini Pro</option>
-                            <option value="gemini-pro-vision">Gemini Pro Vision</option>
-                            <option value="gemini-flash">Gemini Flash</option>
-                        </select>
-                    </div>
+
 
                     <div class="setting-group">
                         <button id="test-google" class="btn-secondary">Test Google AI Connection</button>
@@ -89,7 +74,27 @@
                         <option value="llm-only">LLM Only</option>
                         <option value="statistical-only">Statistical Only</option>
                     </select>
-                    <small class="help-text">Ensemble combines multiple methods for best accuracy</small>
+                    <small class="help-text">
+                        Ensemble combines LLM and statistical analysis for best accuracy
+                    </small>
+                </div>
+
+                <div class="setting-group">
+                    <label for="selected-model">Selected LLM Model:</label>
+                    <select id="selected-model">
+                        <option value="">Loading models...</option>
+                    </select>
+                    <button id="refresh-models" class="btn-secondary">🔄 Refresh Models</button>
+                    <small class="help-text">Available models from Ollama (local) and enabled cloud services</small>
+                </div>
+
+                <div class="setting-group">
+                    <label for="system-instructions">System Instructions:</label>
+                    <textarea id="system-instructions" rows="4" placeholder="Enter custom instructions for the LLM to improve analysis accuracy...
+Example: 'Focus on technical writing patterns' or 'Pay special attention to academic language'"></textarea>
+                    <small class="help-text">
+                        Custom instructions to guide the LLM's analysis. Leave empty for default prompt.
+                    </small>
                 </div>
 
                 <div class="setting-group">

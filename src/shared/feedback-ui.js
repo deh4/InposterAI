@@ -33,9 +33,9 @@ export class FeedbackUI {
   }
 
   /**
-   * Create feedback widget for popup analysis results
+   * Create feedback widget for analysis results
    */
-  createPopupFeedbackWidget(recordId) {
+  createFeedbackWidget(recordId) {
     this.currentRecordId = recordId;
     
     const widget = document.createElement('div');

@@ -6,8 +6,7 @@
 
   "permissions": [
     "activeTab",
-    "storage",
-    "contextMenus"
+    "storage"
   ],
 
   "host_permissions": [

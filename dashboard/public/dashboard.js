@@ -45,8 +45,8 @@ class DashboardClient {
     });
 
     document.getElementById('openExtension').addEventListener('click', () => {
-      // Try to open extension popup (browser-specific)
-      alert('Please click the InposterAI extension icon in your browser toolbar');
+      // Try to open extension settings (browser-specific)
+      alert('Please click the InposterAI extension icon in your browser toolbar to access settings');
     });
 
     document.getElementById('viewDocs').addEventListener('click', () => {
@@ -338,10 +338,11 @@ class DashboardClient {
         this.charts.models.destroy();
       }
 
-      const models = data.models || [];
-      const labels = models.map(m => m.name);
-      const usageCounts = models.map(m => m.usageCount);
-      const responseTimes = models.map(m => m.avgResponseTime);
+      // Use the correct data structure from the API
+      const models = data.modelStats || [];
+      const labels = models.map(m => m.model_name);
+      const usageCounts = models.map(m => m.total_analyses);
+      const responseTimes = models.map(m => Math.round(m.avg_response_time || 0));
 
       this.charts.models = new Chart(ctx, {
         type: 'bar',

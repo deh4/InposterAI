@@ -42,7 +42,7 @@ export class OllamaClient {
   /**
    * Analyze text for AI generation likelihood using ensemble approach
    */
-  async analyzeText(text) {
+  async analyzeText(text, customInstructions = '') {
     if (!text || text.trim().length === 0) {
       throw new Error('Text cannot be empty');
     }
@@ -56,7 +56,7 @@ export class OllamaClient {
     // Get LLM analysis with timing
     console.log('Running LLM analysis...');
     const llmStartTime = Date.now();
-    const llmAnalysis = await this.getLLMAnalysis(text);
+    const llmAnalysis = await this.getLLMAnalysis(text, customInstructions);
     const llmEndTime = Date.now();
 
     // Combine using ensemble scoring
@@ -87,8 +87,8 @@ export class OllamaClient {
   /**
    * Get LLM analysis from Ollama
    */
-  async getLLMAnalysis(text) {
-    const prompt = `You are an expert AI content detector. Analyze the following text to determine if it was written by AI or a human.
+  async getLLMAnalysis(text, customInstructions = '') {
+    let prompt = `You are an expert AI content detector. Analyze the following text to determine if it was written by AI or a human.
 
 ANALYSIS CRITERIA:
 1. **Linguistic Patterns**: Look for AI-typical phrases like "Furthermore," "Moreover," "It's important to note," "In conclusion"
@@ -97,16 +97,26 @@ ANALYSIS CRITERIA:
 4. **Vocabulary**: Assess if word choice seems diverse/natural vs. repetitive/formulaic
 5. **Sentence Structure**: Evaluate if sentences are too uniform vs. natural human variation
 6. **Specificity**: Check for vague generalities vs. concrete details/personal insights
-7. **Imperfections**: Look for natural human quirks, typos, or conversational elements
+7. **Imperfections**: Look for natural human quirks, typos, or conversational elements`;
 
-TEXT TO ANALYZE:
+    // Add custom instructions if provided
+    if (customInstructions && customInstructions.trim()) {
+      prompt += `\n\nADDITIONAL INSTRUCTIONS:\n${customInstructions.trim()}`;
+    }
+
+    prompt += `\n\nTEXT TO ANALYZE:
 "${text.substring(0, 2000)}" ${text.length > 2000 ? '...[truncated]' : ''}
+
+SCORING GUIDE:
+- 0-30: Strong human indicators (typos, informal language, personal opinions, conversational style)
+- 31-70: Mixed signals or uncertain
+- 71-100: Strong AI indicators (formal tone, generic phrases, perfect grammar, AI-typical patterns)
 
 RESPOND WITH VALID JSON ONLY (no markdown, no explanation):
 {
   "likelihood": [0-100 integer],
   "confidence": [0-100 integer],
-  "reasoning": "Brief explanation",
+  "reasoning": "Brief explanation that matches the likelihood score",
   "key_indicators": ["item1", "item2", "item3"]
 }
 
@@ -114,6 +124,7 @@ IMPORTANT:
 - Return ONLY the JSON object, no other text
 - Use integer values for likelihood and confidence
 - Keep reasoning under 200 characters
+- Make sure reasoning MATCHES the likelihood score (high score = AI indicators, low score = human indicators)
 - Be especially careful of false positives - focus on distinctly AI-like patterns`;
 
     try {
@@ -153,6 +164,13 @@ IMPORTANT:
       const data = await response.json();
       console.log('Ollama API response data:', data);
       
+      // Log the raw LLM response for debugging
+      console.log('🤖 RAW LLM OUTPUT:');
+      console.log('==================');
+      console.log(data.response);
+      console.log('==================');
+      console.log('Length:', data.response?.length, 'characters');
+      
       return this.parseAnalysisResponse(data.response);
     } catch (error) {
       console.error('Ollama analysis error:', error);
@@ -169,38 +187,49 @@ IMPORTANT:
    * Parse AI model response and extract analysis data with multiple strategies
    */
   parseAnalysisResponse(response) {
+    console.log('🔍 PARSING LLM RESPONSE');
     console.log('Raw LLM response:', response);
+    console.log('Response type:', typeof response);
+    console.log('Response length:', response?.length);
     
     // Strategy 1: Direct JSON parse (for clean responses)
+    console.log('Trying direct JSON parsing...');
     const result1 = this.tryDirectJSONParse(response);
     if (result1) {
-      console.log('Successfully parsed with direct JSON strategy');
+      console.log('✅ Successfully parsed with direct JSON strategy');
       return result1;
     }
+    console.log('❌ Direct JSON parsing failed');
 
     // Strategy 2: Extract JSON from markdown code blocks
+    console.log('Trying markdown JSON parsing...');
     const result2 = this.tryMarkdownJSONParse(response);
     if (result2) {
-      console.log('Successfully parsed with markdown JSON strategy');
+      console.log('✅ Successfully parsed with markdown JSON strategy');
       return result2;
     }
+    console.log('❌ Markdown JSON parsing failed');
 
     // Strategy 3: Regex-based JSON extraction
+    console.log('Trying regex JSON parsing...');
     const result3 = this.tryRegexJSONParse(response);
     if (result3) {
-      console.log('Successfully parsed with regex JSON strategy');
+      console.log('✅ Successfully parsed with regex JSON strategy');
       return result3;
     }
+    console.log('❌ Regex JSON parsing failed');
 
     // Strategy 4: Line-by-line parsing for malformed JSON
+    console.log('Trying line-by-line parsing...');
     const result4 = this.tryLineByLineParse(response);
     if (result4) {
-      console.log('Successfully parsed with line-by-line strategy');
+      console.log('✅ Successfully parsed with line-by-line strategy');
       return result4;
     }
+    console.log('❌ Line-by-line parsing failed');
 
     // Fallback: keyword-based analysis
-    console.warn('All JSON parsing strategies failed, using fallback analysis');
+    console.warn('🚨 All JSON parsing strategies failed, using fallback analysis');
     return this.fallbackAnalysis(response);
   }
 
@@ -306,16 +335,53 @@ IMPORTANT:
    * Format and validate parsed result
    */
   formatParseResult(parsed, rawResponse) {
+    console.log('formatParseResult called with parsed:', parsed);
+    
+    // Handle common typos and variations
+    let likelihood = parsed.likelihood || parsed.likelikhood;
+    let confidence = parsed.confidence;
+    
+    // Handle arrays - extract first element if it's an array
+    if (Array.isArray(likelihood)) {
+      likelihood = likelihood[0];
+    }
+    if (Array.isArray(confidence)) {
+      confidence = confidence[0];
+    }
+    
+    console.log('Extracted values - likelihood:', likelihood, '(type:', typeof likelihood, '), confidence:', confidence, '(type:', typeof confidence, ')');
+    
     // Validate required fields exist
-    if (typeof parsed.likelihood !== 'number' || typeof parsed.confidence !== 'number') {
+    if (typeof likelihood !== 'number' || typeof confidence !== 'number') {
+      console.log('❌ Validation failed - likelihood:', typeof likelihood, likelihood, 'confidence:', typeof confidence, confidence);
+      console.log('❌ Parsed object keys:', Object.keys(parsed));
+      console.log('❌ Full parsed object:', JSON.stringify(parsed, null, 2));
       return null;
     }
 
+    // Validate reasoning consistency with likelihood score
+    let reasoning = parsed.reasoning || 'No reasoning provided';
+    const humanKeywords = ['human', 'personal', 'informal', 'typos', 'conversational', 'natural'];
+    const aiKeywords = ['ai', 'formal', 'generic', 'formulaic', 'structured', 'predictable'];
+    
+    const hasHumanKeywords = humanKeywords.some(word => reasoning.toLowerCase().includes(word));
+    const hasAiKeywords = aiKeywords.some(word => reasoning.toLowerCase().includes(word));
+    
+    // Check for contradiction between score and reasoning
+    if (likelihood > 70 && hasHumanKeywords && !hasAiKeywords) {
+      console.log('⚠️ Detected contradiction: High AI score but human reasoning. Adjusting reasoning.');
+      reasoning = `High likelihood of AI generation detected. ${reasoning}`;
+    } else if (likelihood < 30 && hasAiKeywords && !hasHumanKeywords) {
+      console.log('⚠️ Detected contradiction: Low AI score but AI reasoning. Adjusting reasoning.');
+      reasoning = `Strong human indicators detected. ${reasoning}`;
+    }
+
+    console.log('✅ Validation passed, returning formatted result');
     return {
-      likelihood: Math.min(100, Math.max(0, parsed.likelihood || 0)),
-      confidence: Math.min(100, Math.max(0, parsed.confidence || 0)),
-      reasoning: parsed.reasoning || 'No reasoning provided',
-      keyIndicators: parsed.key_indicators || [],
+      likelihood: Math.min(100, Math.max(0, likelihood || 0)),
+      confidence: Math.min(100, Math.max(0, confidence || 0)),
+      reasoning: reasoning,
+      keyIndicators: parsed.key_indicators || parsed.keyIndicators || [],
       rawResponse: rawResponse,
     };
   }

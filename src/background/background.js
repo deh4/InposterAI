@@ -4,35 +4,28 @@
  */
 
 import OllamaClient from '../shared/ollama-client.js';
+import GoogleClient from '../shared/google-client.js';
 
 class BackgroundService {
   constructor() {
     this.ollamaClient = new OllamaClient();
+    this.googleClient = new GoogleClient();
     this.analysisCache = new Map();
     this.cacheTimeout = 30 * 60 * 1000; // 30 minutes
     this.dashboardUrl = 'http://localhost:3000'; // Dashboard server URL
     this.setupMessageHandlers();
-    this.setupContextMenus();
   }
 
-  setupContextMenus() {
-    chrome.contextMenus.create({
-      id: 'analyzeSelectedText',
-      title: 'Quick Analyze with AI Detector',
-      contexts: ['selection']
-    });
-  }
+
 
   setupMessageHandlers() {
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+      console.log('Background received message:', request.action);
       this.handleMessage(request, sender, sendResponse);
       return true; // Keep message channel open for async responses
     });
 
-    // Context menu click handler
-    chrome.contextMenus.onClicked.addListener((info, tab) => {
-      this.handleContextMenuClick(info, tab);
-    });
+
 
     // Extension installation
     chrome.runtime.onInstalled.addListener((details) => {
@@ -48,10 +41,13 @@ class BackgroundService {
   }
 
   async handleMessage(request, sender, sendResponse) {
+    console.log('Handling message:', request.action, 'with options:', request.options);
     try {
       switch (request.action) {
         case 'analyzeText': {
+          console.log('Starting text analysis...');
           const result = await this.analyzeText(request.text, request.options);
+          console.log('Analysis completed, sending response');
           sendResponse({ success: true, data: result });
           break;
         }
@@ -80,7 +76,23 @@ class BackgroundService {
           sendResponse({ success: true, models: models });
           break;
         }
+        case 'validateGoogleApiKey': {
+          const result = await this.validateGoogleApiKey(request.apiKey);
+          sendResponse({ success: true, valid: result });
+          break;
+        }
+        case 'getGoogleModels': {
+          const models = await this.getGoogleModels(request.apiKey);
+          sendResponse({ success: true, models: models });
+          break;
+        }
+        case 'ping': {
+          console.log('Ping received, responding with pong');
+          sendResponse({ success: true, data: 'pong' });
+          break;
+        }
         default:
+          console.log('Unknown action received:', request.action);
           sendResponse({ success: false, error: 'Unknown action' });
       }
     } catch (error) {
@@ -105,7 +117,7 @@ class BackgroundService {
         ...cached,
         fromCache: true,
         analysisTime: Date.now() - requestStartTime,
-        modelName: cached.modelName || (await this.getSettings()).model,
+        modelName: cached.modelName || (await this.getSettings()).ollamaModel || (await this.getSettings()).model || 'gemma3n:e4b',
         cacheHitTime: Date.now() - requestStartTime
       };
       
@@ -119,23 +131,65 @@ class BackgroundService {
       return enhancedCached;
     }
 
-    // Test Ollama connection
-    const connectionTest = await this.ollamaClient.testConnection();
-    if (!connectionTest.success) {
-      throw new Error(`Ollama not available: ${connectionTest.error}`);
-    }
-
-    // Get current settings and system info
+    // Get current settings
     const settings = await this.getSettings();
-    const ollamaVersion = await this.ollamaClient.getOllamaVersion();
-    const modelInfo = await this.ollamaClient.getModelInfo(settings.model);
-
-    // Update ollama client model if settings changed
-    this.ollamaClient.setModel(settings.model);
-
-    // Perform analysis
+    
+    let analysis, modelInfo, selectedModel, serviceVersion, useGoogleAPI;
     const analysisStartTime = Date.now();
-    const analysis = await this.ollamaClient.analyzeText(text);
+
+    // Determine which LLM service to use for analysis
+    console.log('🔍 Analysis routing - Method:', settings.analysisMethod, 'Google API Key:', settings.googleApiKey ? 'SET' : 'NOT SET');
+    
+    useGoogleAPI = false;
+    
+    // Parse unified model selection
+    const unifiedModel = settings.selectedModel || '';
+    const [modelSource, modelName] = unifiedModel.includes(':') ? unifiedModel.split(':', 2) : ['', ''];
+    
+    // Determine which service to use
+    if (modelSource === 'google' && settings.googleApiKey) {
+      useGoogleAPI = true;
+      selectedModel = modelName;
+    } else if (modelSource === 'ollama' || !modelSource) {
+      // Use Ollama - either explicitly selected or as fallback
+      useGoogleAPI = false;
+      selectedModel = modelName || settings.ollamaModel || settings.model || 'gemma3n:e4b';
+    } else if ((settings.analysisMethod === 'ensemble' || settings.analysisMethod === 'llm-only') && settings.googleApiKey) {
+      // Fallback to Google if available
+      useGoogleAPI = true;
+      selectedModel = settings.googleModel || 'gemini-pro'; // Legacy fallback for backward compatibility
+    } else {
+      // Final fallback to Ollama
+      useGoogleAPI = false;
+      selectedModel = settings.ollamaModel || settings.model || 'gemma3n:e4b';
+    }
+    
+    if (useGoogleAPI) {
+      // Use Google Gemini API
+      this.googleClient.setApiKey(settings.googleApiKey);
+      
+      console.log('🤖 Using Google Gemini API for LLM analysis with model:', selectedModel);
+      analysis = await this.googleClient.analyzeText(text, selectedModel, settings.systemInstructions);
+      serviceVersion = 'Google Gemini API';
+      modelInfo = { name: selectedModel, source: 'google' };
+      
+    } else {
+      // Use Ollama (fallback or default)
+      const connectionTest = await this.ollamaClient.testConnection();
+      if (!connectionTest.success) {
+        throw new Error(`Ollama not available: ${connectionTest.error}`);
+      }
+
+      serviceVersion = await this.ollamaClient.getOllamaVersion();
+      modelInfo = await this.ollamaClient.getModelInfo(selectedModel);
+
+      // Update ollama client model if settings changed
+      this.ollamaClient.setModel(selectedModel);
+      
+      console.log('🤖 Using Ollama for LLM analysis with model:', selectedModel);
+      analysis = await this.ollamaClient.analyzeText(text, settings.systemInstructions);
+    }
+    
     const analysisEndTime = Date.now();
     
     // Enhance analysis with comprehensive system data
@@ -147,9 +201,10 @@ class BackgroundService {
       connectionTestTime: analysisStartTime - requestStartTime,
       
       // System information
-      modelName: settings.model,
+      modelName: selectedModel,
       modelInfo: modelInfo,
-      ollamaVersion: ollamaVersion,
+      serviceVersion: serviceVersion,
+      analysisService: useGoogleAPI ? 'google' : 'ollama',
       extensionVersion: chrome.runtime.getManifest()?.version || '1.0.0',
       
       // Settings context
@@ -226,12 +281,50 @@ class BackgroundService {
   }
 
   async updateSettings(settings) {
+    // Update Google client if API key provided
+    if (settings.googleApiKey) {
+      this.googleClient.setApiKey(settings.googleApiKey);
+    }
+    
     return chrome.storage.sync.set({ aiDetectorSettings: settings });
+  }
+
+  async validateGoogleApiKey(apiKey) {
+    try {
+      return await this.googleClient.validateApiKey(apiKey);
+    } catch (error) {
+      console.error('Google API key validation failed:', error);
+      return false;
+    }
+  }
+
+  async getGoogleModels(apiKey) {
+    try {
+      return await this.googleClient.getAvailableModels(apiKey);
+    } catch (error) {
+      console.error('Failed to get Google models:', error);
+      return [];
+    }
   }
 
   async getSettings() {
     const result = await chrome.storage.sync.get('aiDetectorSettings');
     return result.aiDetectorSettings || {
+      // AI Model Configuration
+      ollamaUrl: 'http://localhost:11434',
+      ollamaModel: 'gemma3n:e4b', // Legacy compatibility
+      googleApiKey: '',
+      googleModel: 'gemini-pro', // Legacy compatibility
+      
+      // Analysis Preferences  
+      analysisMethod: 'ensemble',
+      selectedModel: '', // Unified model selection
+      systemInstructions: '', // Custom LLM instructions
+      confidenceThreshold: 70,
+      cacheEnabled: true,
+      cacheDuration: 24,
+      
+      // Legacy compatibility
       autoAnalyze: true,
       minTextLength: 100,
       model: 'gemma3n:e4b',
@@ -254,6 +347,21 @@ class BackgroundService {
       console.log('AI Content Detector installed');
       // Set default settings
       this.updateSettings({
+        // AI Model Configuration
+        ollamaUrl: 'http://localhost:11434',
+        ollamaModel: 'gemma3n:e4b', // Legacy compatibility
+        googleApiKey: '',
+        googleModel: 'gemini-pro', // Legacy compatibility
+        
+        // Analysis Preferences
+        analysisMethod: 'ensemble',
+        selectedModel: '', // Unified model selection
+        systemInstructions: '', // Custom LLM instructions
+        confidenceThreshold: 70,
+        cacheEnabled: true,
+        cacheDuration: 24,
+        
+        // Legacy compatibility
         autoAnalyze: true,
         minTextLength: 100,
         model: 'gemma3n:e4b',
@@ -264,53 +372,7 @@ class BackgroundService {
     }
   }
 
-  async handleContextMenuClick(info, tab) {
-    if (info.menuItemId === 'analyzeSelectedText' && info.selectionText) {
-      try {
-        console.log('Context menu analysis started for text:', info.selectionText.substring(0, 50));
-        
-        // Show loading indicator immediately
-        try {
-          await chrome.tabs.sendMessage(tab.id, {
-            action: 'showQuickAnalysisLoading',
-            selectedText: info.selectionText
-          });
-          console.log('Loading indicator sent successfully');
-        } catch (loadingError) {
-          console.warn('Failed to show loading indicator:', loadingError);
-          // Continue with analysis even if loading indicator fails
-        }
 
-        // Analyze the selected text
-        const analysis = await this.analyzeText(info.selectionText, { quickAnalysis: true });
-        console.log('Analysis completed:', analysis);
-        
-        // Send result to content script for overlay display
-        try {
-          await chrome.tabs.sendMessage(tab.id, {
-            action: 'showQuickAnalysisResult',
-            analysis: analysis,
-            selectedText: info.selectionText
-          });
-          console.log('Results sent successfully');
-        } catch (resultError) {
-          console.error('Failed to send results:', resultError);
-        }
-      } catch (error) {
-        console.error('Context menu analysis failed:', error);
-        
-        // Show error to user
-        try {
-          await chrome.tabs.sendMessage(tab.id, {
-            action: 'showQuickAnalysisError',
-            error: error.message
-          });
-        } catch (errorMsgError) {
-          console.error('Failed to send error message:', errorMsgError);
-        }
-      }
-    }
-  }
 
   async updateBadgeForTab(tabId) {
     // Disable automatic badge updates for now - they should be triggered after analysis

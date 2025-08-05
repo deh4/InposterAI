@@ -221,39 +221,6 @@ class AnalyticsProcessor {
     };
   }
 
-  async getModelPerformance() {
-    const performance = await this.db.all(`
-      SELECT 
-        a.model_name,
-        COUNT(*) as usage_count,
-        AVG(a.analysis_time) as avg_response_time,
-        AVG(a.confidence) as avg_confidence,
-        MAX(a.timestamp) as last_used,
-        COUNT(CASE WHEN f.rating = 1 THEN 1 END) as positive_feedback,
-        COUNT(CASE WHEN f.rating = -1 THEN 1 END) as negative_feedback
-      FROM analyses a
-      LEFT JOIN feedback f ON a.id = f.analysis_id
-      WHERE a.model_name IS NOT NULL
-      GROUP BY a.model_name
-      ORDER BY usage_count DESC
-    `);
-
-    return {
-      models: performance.map(model => ({
-        name: model.model_name,
-        usageCount: model.usage_count,
-        avgResponseTime: Math.round(model.avg_response_time || 0),
-        avgConfidence: Math.round(model.avg_confidence || 0),
-        lastUsed: model.last_used,
-        positiveFeedback: model.positive_feedback || 0,
-        negativeFeedback: model.negative_feedback || 0,
-        feedbackRatio: model.positive_feedback > 0 ? 
-          Math.round((model.positive_feedback / (model.positive_feedback + model.negative_feedback)) * 100) : 0
-      })),
-      timestamp: Date.now()
-    };
-  }
-
   async getContentInsights() {
     const insights = await this.db.getContentInsights();
     
@@ -767,7 +734,7 @@ class AnalyticsProcessor {
         a.model_name,
         COUNT(f.id) as total_feedback,
         COUNT(CASE WHEN f.rating = 1 THEN 1 END) as positive_feedback,
-        AVG(CASE WHEN f.correction IS NOT NULL THEN f.correction ELSE a.ai_likelihood END) as avg_corrected_likelihood
+        AVG(CASE WHEN f.corrected_likelihood IS NOT NULL THEN f.corrected_likelihood ELSE a.ai_likelihood END) as avg_corrected_likelihood
       FROM analyses a
       LEFT JOIN feedback f ON a.id = f.analysis_id
       WHERE a.timestamp > ? AND a.model_name IS NOT NULL
@@ -799,7 +766,7 @@ class AnalyticsProcessor {
         DATE(f.timestamp / 1000, 'unixepoch') as date,
         COUNT(*) as total_feedback,
         COUNT(CASE WHEN f.rating = 1 THEN 1 END) as positive_feedback,
-        AVG(ABS(f.correction - a.ai_likelihood)) as avg_correction_delta,
+        AVG(ABS(f.corrected_likelihood - a.ai_likelihood)) as avg_correction_delta,
         AVG(f.feedback_delay) as avg_feedback_delay
       FROM feedback f
       JOIN analyses a ON f.analysis_id = a.id
@@ -813,7 +780,7 @@ class AnalyticsProcessor {
         user_expertise,
         COUNT(*) as total_feedback,
         COUNT(CASE WHEN rating = 1 THEN 1 END) as positive_feedback,
-        AVG(ABS(correction - (SELECT ai_likelihood FROM analyses WHERE id = feedback.analysis_id))) as avg_accuracy
+        AVG(ABS(corrected_likelihood - (SELECT ai_likelihood FROM analyses WHERE id = feedback.analysis_id))) as avg_accuracy
       FROM feedback
       WHERE timestamp > ?
       GROUP BY user_expertise
@@ -927,7 +894,7 @@ class AnalyticsProcessor {
         a.content_type,
         a.ai_likelihood,
         a.confidence,
-        f.correction,
+        f.corrected_likelihood,
         a.reasoning,
         COUNT(*) as frequency
       FROM analyses a
@@ -945,14 +912,14 @@ class AnalyticsProcessor {
         a.content_type,
         a.ai_likelihood,
         a.confidence,
-        f.correction,
+        f.corrected_likelihood,
         a.reasoning,
         COUNT(*) as frequency
       FROM analyses a
       JOIN feedback f ON a.id = f.analysis_id
       WHERE f.rating = 0 
         AND a.ai_likelihood < 30 
-        AND f.correction > 70
+        AND f.corrected_likelihood > 70
         AND a.timestamp > ?
       GROUP BY a.domain, a.content_type, a.ai_likelihood, a.confidence
       ORDER BY frequency DESC
