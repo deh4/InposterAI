@@ -430,3 +430,8 @@ class BackgroundService {
 const backgroundService = new BackgroundService();
 
 console.log('AI Content Detector background service initialized'); 
+
+chrome.action.onClicked.addListener(async (_tab) => {
+  // Open settings page when toolbar icon is clicked
+  chrome.runtime.openOptionsPage();
+}); 

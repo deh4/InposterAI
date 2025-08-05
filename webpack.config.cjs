@@ -10,7 +10,7 @@ module.exports = {
   entry: {
     background: './src/background/background.js',
     content: './src/content/content.js',
-    popup: './src/popup/popup.js'
+    settings: './src/settings/settings.js'
   },
   
   output: {
@@ -59,12 +59,16 @@ module.exports = {
           to: 'manifest.json'
         },
         {
-          from: 'src/popup/popup.html',
-          to: 'popup/popup.html'
+          from: 'src/settings/settings.html',
+          to: 'settings/settings.html'
         },
         {
-          from: 'src/popup/popup.css',
-          to: 'popup/popup.css'
+          from: 'src/settings/settings.css',
+          to: 'settings/settings.css'
+        },
+        {
+          from: 'src/content/content.css',
+          to: 'content/content.css'
         },
         {
           from: 'src/assets',

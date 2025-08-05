@@ -191,6 +191,90 @@ class DashboardServer {
       }
     });
 
+    // Enhanced Analytics Endpoints
+    this.app.get('/api/analytics/heatmap/:period?', async (req, res) => {
+      try {
+        const period = req.params.period || '30d';
+        const data = await this.processor.getDetectionHeatmap(period);
+        res.json(data);
+      } catch (error) {
+        console.error('Heatmap analytics error:', error);
+        res.status(500).json({ error: 'Failed to fetch heatmap data' });
+      }
+    });
+
+    this.app.get('/api/analytics/temporal/:granularity?/:period?', async (req, res) => {
+      try {
+        const granularity = req.params.granularity || 'hourly';
+        const period = req.params.period || '7d';
+        const data = await this.processor.getTemporalPatterns(granularity, period);
+        res.json(data);
+      } catch (error) {
+        console.error('Temporal analytics error:', error);
+        res.status(500).json({ error: 'Failed to fetch temporal data' });
+      }
+    });
+
+    this.app.get('/api/analytics/content-intelligence', async (req, res) => {
+      try {
+        const data = await this.processor.getContentTypeIntelligence();
+        res.json(data);
+      } catch (error) {
+        console.error('Content intelligence error:', error);
+        res.status(500).json({ error: 'Failed to fetch content intelligence' });
+      }
+    });
+
+    this.app.get('/api/analytics/model-performance', async (req, res) => {
+      try {
+        const data = await this.processor.getModelPerformance();
+        res.json(data);
+      } catch (error) {
+        console.error('Model performance error:', error);
+        res.status(500).json({ error: 'Failed to fetch model performance' });
+      }
+    });
+
+    this.app.get('/api/analytics/learning-curve', async (req, res) => {
+      try {
+        const data = await this.processor.getUserLearningCurve();
+        res.json(data);
+      } catch (error) {
+        console.error('Learning curve error:', error);
+        res.status(500).json({ error: 'Failed to fetch learning curve' });
+      }
+    });
+
+    this.app.get('/api/analytics/linguistic-patterns', async (req, res) => {
+      try {
+        const data = await this.processor.getLinguisticPatterns();
+        res.json(data);
+      } catch (error) {
+        console.error('Linguistic patterns error:', error);
+        res.status(500).json({ error: 'Failed to fetch linguistic patterns' });
+      }
+    });
+
+    this.app.get('/api/analytics/cache-performance', async (req, res) => {
+      try {
+        const data = await this.processor.getCachePerformance();
+        res.json(data);
+      } catch (error) {
+        console.error('Cache performance error:', error);
+        res.status(500).json({ error: 'Failed to fetch cache performance' });
+      }
+    });
+
+    this.app.get('/api/analytics/error-analysis', async (req, res) => {
+      try {
+        const data = await this.processor.getFalsePositiveAnalysis();
+        res.json(data);
+      } catch (error) {
+        console.error('Error analysis error:', error);
+        res.status(500).json({ error: 'Failed to fetch error analysis' });
+      }
+    });
+
     // Dashboard route
     this.app.get('/', (req, res) => {
       res.sendFile(path.join(__dirname, 'public', 'index.html'));

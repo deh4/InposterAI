@@ -102,15 +102,19 @@ ANALYSIS CRITERIA:
 TEXT TO ANALYZE:
 "${text.substring(0, 2000)}" ${text.length > 2000 ? '...[truncated]' : ''}
 
-RESPOND WITH JSON:
+RESPOND WITH VALID JSON ONLY (no markdown, no explanation):
 {
-  "likelihood": [0-100 number, where 0=definitely human, 100=definitely AI],
-  "confidence": [0-100 number, your confidence in this assessment],
-  "reasoning": "Concise explanation of 2-3 key factors that led to your assessment",
-  "key_indicators": ["list", "of", "specific", "evidence"]
+  "likelihood": [0-100 integer],
+  "confidence": [0-100 integer],
+  "reasoning": "Brief explanation",
+  "key_indicators": ["item1", "item2", "item3"]
 }
 
-Be especially careful of false positives - many human writers use formal language. Focus on patterns that are distinctly AI-like.`;
+IMPORTANT: 
+- Return ONLY the JSON object, no other text
+- Use integer values for likelihood and confidence
+- Keep reasoning under 200 characters
+- Be especially careful of false positives - focus on distinctly AI-like patterns`;
 
     try {
       console.log('Making Ollama API request to:', `${this.baseUrl}/api/generate`);
@@ -162,29 +166,158 @@ Be especially careful of false positives - many human writers use formal languag
   }
 
   /**
-   * Parse AI model response and extract analysis data
+   * Parse AI model response and extract analysis data with multiple strategies
    */
   parseAnalysisResponse(response) {
-    try {
-      // Try to extract JSON from the response
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return {
-          likelihood: Math.min(100, Math.max(0, parsed.likelihood || 0)),
-          confidence: Math.min(100, Math.max(0, parsed.confidence || 0)),
-          reasoning: parsed.reasoning || 'No reasoning provided',
-          keyIndicators: parsed.key_indicators || [],
-          rawResponse: response,
-        };
-      }
-    } catch (error) {
-      // If JSON parsing fails, provide fallback analysis
-      console.warn('Failed to parse structured response:', error);
+    console.log('Raw LLM response:', response);
+    
+    // Strategy 1: Direct JSON parse (for clean responses)
+    const result1 = this.tryDirectJSONParse(response);
+    if (result1) {
+      console.log('Successfully parsed with direct JSON strategy');
+      return result1;
     }
 
-    // Fallback: simple keyword-based analysis
+    // Strategy 2: Extract JSON from markdown code blocks
+    const result2 = this.tryMarkdownJSONParse(response);
+    if (result2) {
+      console.log('Successfully parsed with markdown JSON strategy');
+      return result2;
+    }
+
+    // Strategy 3: Regex-based JSON extraction
+    const result3 = this.tryRegexJSONParse(response);
+    if (result3) {
+      console.log('Successfully parsed with regex JSON strategy');
+      return result3;
+    }
+
+    // Strategy 4: Line-by-line parsing for malformed JSON
+    const result4 = this.tryLineByLineParse(response);
+    if (result4) {
+      console.log('Successfully parsed with line-by-line strategy');
+      return result4;
+    }
+
+    // Fallback: keyword-based analysis
+    console.warn('All JSON parsing strategies failed, using fallback analysis');
     return this.fallbackAnalysis(response);
+  }
+
+  /**
+   * Strategy 1: Try direct JSON parsing (for clean responses)
+   */
+  tryDirectJSONParse(response) {
+    try {
+      const cleaned = response.trim();
+      const parsed = JSON.parse(cleaned);
+      return this.formatParseResult(parsed, response);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
+   * Strategy 2: Extract JSON from markdown code blocks
+   */
+  tryMarkdownJSONParse(response) {
+    try {
+      // Look for ```json or ``` code blocks
+      const codeBlockMatch = response.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/i);
+      if (codeBlockMatch) {
+        const parsed = JSON.parse(codeBlockMatch[1]);
+        return this.formatParseResult(parsed, response);
+      }
+         } catch {
+       // Continue to next strategy
+     }
+     return null;
+   }
+
+   /**
+    * Strategy 3: Regex-based JSON extraction
+    */
+   tryRegexJSONParse(response) {
+     try {
+       // Look for the first complete JSON object
+       const jsonMatch = response.match(/\{[\s\S]*?\}/);
+       if (jsonMatch) {
+         const parsed = JSON.parse(jsonMatch[0]);
+         return this.formatParseResult(parsed, response);
+       }
+     } catch {
+       // Continue to next strategy
+     }
+     return null;
+   }
+
+   /**
+    * Strategy 4: Line-by-line parsing for malformed JSON
+    */
+   tryLineByLineParse(response) {
+     try {
+       const lines = response.split('\n');
+       let likelihood = null;
+       let confidence = null;
+       let reasoning = '';
+       let keyIndicators = [];
+
+       for (const line of lines) {
+         // Extract likelihood
+         const likelihoodMatch = line.match(/["']?likelihood["']?\s*:\s*(\d+)/i);
+         if (likelihoodMatch) likelihood = parseInt(likelihoodMatch[1]);
+
+         // Extract confidence
+         const confidenceMatch = line.match(/["']?confidence["']?\s*:\s*(\d+)/i);
+         if (confidenceMatch) confidence = parseInt(confidenceMatch[1]);
+
+         // Extract reasoning
+         const reasoningMatch = line.match(/["']?reasoning["']?\s*:\s*["']([^"']+)["']?/i);
+         if (reasoningMatch) reasoning = reasoningMatch[1];
+
+        // Extract key indicators (simplified)
+        if (line.includes('key_indicators') || line.includes('indicators')) {
+          const indicatorMatch = line.match(/\[(.*?)\]/);
+          if (indicatorMatch) {
+            keyIndicators = indicatorMatch[1]
+              .split(',')
+              .map(item => item.trim().replace(/['"]/g, ''))
+              .filter(item => item.length > 0);
+          }
+        }
+      }
+
+      // If we got at least likelihood and confidence, use it
+      if (likelihood !== null && confidence !== null) {
+        return this.formatParseResult({
+          likelihood,
+          confidence,
+          reasoning: reasoning || 'Extracted from malformed response',
+          key_indicators: keyIndicators
+        }, response);
+      }
+    } catch (error) {
+      // Continue to fallback
+    }
+    return null;
+  }
+
+  /**
+   * Format and validate parsed result
+   */
+  formatParseResult(parsed, rawResponse) {
+    // Validate required fields exist
+    if (typeof parsed.likelihood !== 'number' || typeof parsed.confidence !== 'number') {
+      return null;
+    }
+
+    return {
+      likelihood: Math.min(100, Math.max(0, parsed.likelihood || 0)),
+      confidence: Math.min(100, Math.max(0, parsed.confidence || 0)),
+      reasoning: parsed.reasoning || 'No reasoning provided',
+      keyIndicators: parsed.key_indicators || [],
+      rawResponse: rawResponse,
+    };
   }
 
   /**

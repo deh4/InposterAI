@@ -1,67 +1,49 @@
 {
   "manifest_version": 3,
-  "name": "AI Content Detector",
-  "version": "0.1.0",
-  "description": "Detect AI-generated content using local Ollama models. Privacy-first analysis that runs completely on your machine.",
-  
+  "name": "InposterAI - AI Content Detector",
+  "version": "1.0.0",
+  "description": "Privacy-focused AI content detection using local analysis with Ollama and cloud models",
+
   "permissions": [
     "activeTab",
     "storage",
-    "scripting",
-    "tabs",
     "contextMenus"
   ],
-  
+
   "host_permissions": [
-    "http://localhost:11434/*",
-    "http://127.0.0.1:11434/*",
-    "https://*/*",
-    "http://*/*"
+    "http://localhost:*/*",
+    "https://generativelanguage.googleapis.com/*"
   ],
-  
+
   "background": {
-    "service_worker": "background/background.js",
-    "type": "module"
+    "service_worker": "background/background.js"
   },
-  
+
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
       "js": ["content/content.js"],
-      "run_at": "document_idle",
-      "all_frames": false
+      "css": ["content/content.css"],
+      "run_at": "document_end"
     }
   ],
-  
+
   "action": {
-    "default_popup": "popup/popup.html",
-    "default_title": "AI Content Detector",
-    "default_icon": {
-      "16": "assets/icon-16.svg",
-      "48": "assets/icon-48.svg",
-      "128": "assets/icon-128.svg"
-    }
+    "default_title": "InposterAI Settings"
   },
-  
+
+  "options_page": "settings/settings.html",
+
   "icons": {
     "16": "assets/icon-16.svg",
     "48": "assets/icon-48.svg",
     "128": "assets/icon-128.svg"
   },
-  
+
   "web_accessible_resources": [
     {
-      "resources": [
-        "assets/*"
-      ],
+      "resources": ["assets/*"],
       "matches": ["<all_urls>"]
     }
-  ],
-  
-  "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self';"
-  },
-  
-  "author": "AI Content Detector Team",
-  "homepage_url": "https://github.com/yourusername/ai-content-detector-extension"
+  ]
 } 

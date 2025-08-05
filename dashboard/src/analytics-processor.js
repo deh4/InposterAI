@@ -598,6 +598,413 @@ class AnalyticsProcessor {
       return { timeDistribution: [], overall: {}, dailyTrends: [] };
     }
   }
+
+  /**
+   * Get AI detection heatmap by domain and time
+   */
+  async getDetectionHeatmap(period = '30d') {
+    const days = this.parsePeriod(period);
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+
+    const heatmapData = await this.db.all(`
+      SELECT 
+        domain,
+        DATE(timestamp / 1000, 'unixepoch') as date,
+        COUNT(*) as total_analyses,
+        AVG(ai_likelihood) as avg_ai_likelihood,
+        COUNT(CASE WHEN ai_likelihood > 70 THEN 1 END) as high_ai_detections
+      FROM analyses 
+      WHERE timestamp > ?
+      GROUP BY domain, date
+      ORDER BY date DESC, avg_ai_likelihood DESC
+    `, [cutoff]);
+
+    return {
+      period,
+      data: heatmapData,
+      summary: {
+        totalDomains: new Set(heatmapData.map(d => d.domain)).size,
+        avgDetectionRate: heatmapData.length > 0 ? 
+          Math.round(heatmapData.reduce((sum, d) => sum + d.avg_ai_likelihood, 0) / heatmapData.length) : 0,
+        topAIDomains: heatmapData
+          .reduce((acc, curr) => {
+            const existing = acc.find(d => d.domain === curr.domain);
+            if (existing) {
+              existing.total_analyses += curr.total_analyses;
+              existing.avg_ai_likelihood = (existing.avg_ai_likelihood + curr.avg_ai_likelihood) / 2;
+            } else {
+              acc.push({ ...curr });
+            }
+            return acc;
+          }, [])
+          .sort((a, b) => b.avg_ai_likelihood - a.avg_ai_likelihood)
+          .slice(0, 10)
+      }
+    };
+  }
+
+  /**
+   * Get temporal analysis patterns (hourly/daily/weekly)
+   */
+  async getTemporalPatterns(granularity = 'hourly', period = '7d') {
+    const days = this.parsePeriod(period);
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+
+    let groupBy, dateFormat;
+    switch (granularity) {
+      case 'hourly':
+        groupBy = "strftime('%H', timestamp / 1000, 'unixepoch')";
+        dateFormat = 'hour';
+        break;
+      case 'daily':
+        groupBy = "strftime('%w', timestamp / 1000, 'unixepoch')";
+        dateFormat = 'day_of_week';
+        break;
+      case 'weekly':
+        groupBy = "strftime('%W', timestamp / 1000, 'unixepoch')";
+        dateFormat = 'week';
+        break;
+      default:
+        throw new Error('Invalid granularity. Use: hourly, daily, or weekly');
+    }
+
+    const patterns = await this.db.all(`
+      SELECT 
+        ${groupBy} as time_period,
+        COUNT(*) as total_analyses,
+        AVG(ai_likelihood) as avg_ai_likelihood,
+        AVG(confidence) as avg_confidence,
+        AVG(analysis_time) as avg_analysis_time,
+        COUNT(CASE WHEN ai_likelihood > 70 THEN 1 END) as high_ai_count
+      FROM analyses 
+      WHERE timestamp > ?
+      GROUP BY time_period
+      ORDER BY time_period
+    `, [cutoff]);
+
+    return {
+      granularity,
+      period,
+      patterns,
+      insights: {
+        peakActivityPeriod: patterns.reduce((max, p) => 
+          p.total_analyses > max.total_analyses ? p : max, { total_analyses: 0 }),
+        highestAIPeriod: patterns.reduce((max, p) => 
+          p.avg_ai_likelihood > max.avg_ai_likelihood ? p : max, { avg_ai_likelihood: 0 }),
+        fastestAnalysisPeriod: patterns.reduce((min, p) => 
+          p.avg_analysis_time < min.avg_analysis_time ? p : min, { avg_analysis_time: Infinity })
+      }
+    };
+  }
+
+  /**
+   * Get content type intelligence and patterns
+   */
+  async getContentTypeIntelligence() {
+    const contentTypes = await this.db.all(`
+      SELECT 
+        content_type,
+        COUNT(*) as total_analyses,
+        AVG(ai_likelihood) as avg_ai_likelihood,
+        AVG(confidence) as avg_confidence,
+        AVG(content_length) as avg_content_length,
+        AVG(reading_time) as avg_reading_time,
+        COUNT(CASE WHEN ai_likelihood > 70 THEN 1 END) as high_ai_detections,
+        COUNT(CASE WHEN ai_likelihood < 30 THEN 1 END) as human_detections
+      FROM analyses 
+      WHERE timestamp > ?
+      GROUP BY content_type
+      ORDER BY total_analyses DESC
+    `, [Date.now() - 30 * 24 * 60 * 60 * 1000]);
+
+    const languagePatterns = await this.db.all(`
+      SELECT 
+        language,
+        COUNT(*) as total_analyses,
+        AVG(ai_likelihood) as avg_ai_likelihood,
+        COUNT(CASE WHEN ai_likelihood > 70 THEN 1 END) as high_ai_detections
+      FROM analyses 
+      WHERE timestamp > ? AND language IS NOT NULL
+      GROUP BY language
+      ORDER BY total_analyses DESC
+    `, [Date.now() - 30 * 24 * 60 * 60 * 1000]);
+
+    return {
+      contentTypes,
+      languagePatterns,
+      insights: {
+        mostAIProneType: contentTypes.reduce((max, type) => 
+          type.avg_ai_likelihood > max.avg_ai_likelihood ? type : max, { avg_ai_likelihood: 0 }),
+        mostHumanType: contentTypes.reduce((min, type) => 
+          type.avg_ai_likelihood < min.avg_ai_likelihood ? type : min, { avg_ai_likelihood: 100 }),
+        totalLanguages: languagePatterns.length,
+        mostAnalyzedLanguage: languagePatterns[0]
+      }
+    };
+  }
+
+  /**
+   * Get model performance comparison (local vs cloud, different models)
+   */
+  async getModelPerformance() {
+    const modelStats = await this.db.all(`
+      SELECT 
+        model_name,
+        COUNT(*) as total_analyses,
+        AVG(ai_likelihood) as avg_ai_likelihood,
+        AVG(confidence) as avg_confidence,
+        AVG(llm_response_time) as avg_response_time,
+        AVG(analysis_time) as avg_total_time,
+        COUNT(CASE WHEN from_cache = 1 THEN 1 END) as cache_hits
+      FROM analyses 
+      WHERE timestamp > ? AND model_name IS NOT NULL
+      GROUP BY model_name
+      ORDER BY total_analyses DESC
+    `, [Date.now() - 30 * 24 * 60 * 60 * 1000]);
+
+    const feedbackByModel = await this.db.all(`
+      SELECT 
+        a.model_name,
+        COUNT(f.id) as total_feedback,
+        COUNT(CASE WHEN f.rating = 1 THEN 1 END) as positive_feedback,
+        AVG(CASE WHEN f.correction IS NOT NULL THEN f.correction ELSE a.ai_likelihood END) as avg_corrected_likelihood
+      FROM analyses a
+      LEFT JOIN feedback f ON a.id = f.analysis_id
+      WHERE a.timestamp > ? AND a.model_name IS NOT NULL
+      GROUP BY a.model_name
+    `, [Date.now() - 30 * 24 * 60 * 60 * 1000]);
+
+    return {
+      modelStats,
+      feedbackByModel,
+      comparison: {
+        fastestModel: modelStats.reduce((min, model) => 
+          model.avg_response_time < min.avg_response_time ? model : min, { avg_response_time: Infinity }),
+        mostAccurateModel: feedbackByModel.reduce((max, model) => {
+          const accuracy = model.total_feedback > 0 ? (model.positive_feedback / model.total_feedback) : 0;
+          const maxAccuracy = max.total_feedback > 0 ? (max.positive_feedback / max.total_feedback) : 0;
+          return accuracy > maxAccuracy ? model : max;
+        }, { total_feedback: 0 }),
+        mostUsedModel: modelStats[0]
+      }
+    };
+  }
+
+  /**
+   * Get user learning curve and feedback evolution
+   */
+  async getUserLearningCurve() {
+    const feedbackEvolution = await this.db.all(`
+      SELECT 
+        DATE(f.timestamp / 1000, 'unixepoch') as date,
+        COUNT(*) as total_feedback,
+        COUNT(CASE WHEN f.rating = 1 THEN 1 END) as positive_feedback,
+        AVG(ABS(f.correction - a.ai_likelihood)) as avg_correction_delta,
+        AVG(f.feedback_delay) as avg_feedback_delay
+      FROM feedback f
+      JOIN analyses a ON f.analysis_id = a.id
+      WHERE f.timestamp > ?
+      GROUP BY date
+      ORDER BY date
+    `, [Date.now() - 90 * 24 * 60 * 60 * 1000]);
+
+    const expertiseProgression = await this.db.all(`
+      SELECT 
+        user_expertise,
+        COUNT(*) as total_feedback,
+        COUNT(CASE WHEN rating = 1 THEN 1 END) as positive_feedback,
+        AVG(ABS(correction - (SELECT ai_likelihood FROM analyses WHERE id = feedback.analysis_id))) as avg_accuracy
+      FROM feedback
+      WHERE timestamp > ?
+      GROUP BY user_expertise
+    `, [Date.now() - 90 * 24 * 60 * 60 * 1000]);
+
+    return {
+      feedbackEvolution,
+      expertiseProgression,
+      learningInsights: {
+        improvementTrend: this.calculateTrend(feedbackEvolution.map(d => d.positive_feedback / d.total_feedback)),
+        accuracyImprovement: this.calculateTrend(feedbackEvolution.map(d => 100 - d.avg_correction_delta)),
+        feedbackSpeedImprovement: this.calculateTrend(feedbackEvolution.map(d => -d.avg_feedback_delay))
+      }
+    };
+  }
+
+  /**
+   * Get linguistic pattern analysis for AI detection
+   */
+  async getLinguisticPatterns() {
+    const patterns = await this.db.all(`
+      SELECT 
+        statistical_breakdown,
+        COUNT(*) as frequency,
+        AVG(ai_likelihood) as avg_ai_likelihood
+      FROM analyses 
+      WHERE timestamp > ? AND statistical_breakdown IS NOT NULL
+      GROUP BY statistical_breakdown
+      ORDER BY frequency DESC
+      LIMIT 100
+    `, [Date.now() - 30 * 24 * 60 * 60 * 1000]);
+
+    // Parse statistical breakdown to find common patterns
+    const indicators = {};
+    patterns.forEach(pattern => {
+      try {
+        const stats = JSON.parse(pattern.statistical_breakdown);
+        Object.keys(stats).forEach(key => {
+          if (!indicators[key]) indicators[key] = [];
+          indicators[key].push({
+            value: stats[key],
+            ai_likelihood: pattern.avg_ai_likelihood,
+            frequency: pattern.frequency
+          });
+        });
+      } catch (e) {
+        // Skip malformed data
+      }
+    });
+
+    return {
+      topPatterns: patterns.slice(0, 20),
+      indicators,
+      insights: {
+        strongestAIIndicator: Object.keys(indicators).reduce((strongest, key) => {
+          const avg = indicators[key].reduce((sum, item) => sum + item.ai_likelihood, 0) / indicators[key].length;
+          return avg > strongest.strength ? { indicator: key, strength: avg } : strongest;
+        }, { indicator: '', strength: 0 }),
+        mostCommonPattern: patterns[0]
+      }
+    };
+  }
+
+  /**
+   * Get cache performance and optimization insights
+   */
+  async getCachePerformance() {
+    const cacheStats = await this.db.all(`
+      SELECT 
+        from_cache,
+        COUNT(*) as total_analyses,
+        AVG(analysis_time) as avg_analysis_time,
+        AVG(cache_hit_time) as avg_cache_time,
+        AVG(content_length) as avg_content_length
+      FROM analyses 
+      WHERE timestamp > ?
+      GROUP BY from_cache
+    `, [Date.now() - 7 * 24 * 60 * 60 * 1000]);
+
+    const cacheEfficiency = await this.db.get(`
+      SELECT 
+        COUNT(*) as total_requests,
+        COUNT(CASE WHEN from_cache = 1 THEN 1 END) as cache_hits,
+        AVG(CASE WHEN from_cache = 0 THEN analysis_time END) as avg_full_analysis_time,
+        AVG(CASE WHEN from_cache = 1 THEN cache_hit_time END) as avg_cache_hit_time
+      FROM analyses 
+      WHERE timestamp > ?
+    `, [Date.now() - 7 * 24 * 60 * 60 * 1000]);
+
+    const hitRate = cacheEfficiency.cache_hits / cacheEfficiency.total_requests * 100;
+    const timeSaved = (cacheEfficiency.avg_full_analysis_time - cacheEfficiency.avg_cache_hit_time) * cacheEfficiency.cache_hits;
+
+    return {
+      cacheStats,
+      efficiency: {
+        hitRate: Math.round(hitRate),
+        timeSavedMs: Math.round(timeSaved),
+        performanceGain: Math.round((cacheEfficiency.avg_full_analysis_time / cacheEfficiency.avg_cache_hit_time) * 100)
+      },
+      recommendations: this.generateCacheRecommendations(hitRate, cacheStats)
+    };
+  }
+
+  /**
+   * Get false positive/negative deep dive analysis
+   */
+  async getFalsePositiveAnalysis() {
+    const falsePositives = await this.db.all(`
+      SELECT 
+        a.domain,
+        a.content_type,
+        a.ai_likelihood,
+        a.confidence,
+        f.correction,
+        a.reasoning,
+        COUNT(*) as frequency
+      FROM analyses a
+      JOIN feedback f ON a.id = f.analysis_id
+      WHERE f.rating = 0 
+        AND a.ai_likelihood > 70 
+        AND a.timestamp > ?
+      GROUP BY a.domain, a.content_type, a.ai_likelihood, a.confidence
+      ORDER BY frequency DESC
+    `, [Date.now() - 30 * 24 * 60 * 60 * 1000]);
+
+    const falseNegatives = await this.db.all(`
+      SELECT 
+        a.domain,
+        a.content_type,
+        a.ai_likelihood,
+        a.confidence,
+        f.correction,
+        a.reasoning,
+        COUNT(*) as frequency
+      FROM analyses a
+      JOIN feedback f ON a.id = f.analysis_id
+      WHERE f.rating = 0 
+        AND a.ai_likelihood < 30 
+        AND f.correction > 70
+        AND a.timestamp > ?
+      GROUP BY a.domain, a.content_type, a.ai_likelihood, a.confidence
+      ORDER BY frequency DESC
+    `, [Date.now() - 30 * 24 * 60 * 60 * 1000]);
+
+    return {
+      falsePositives: falsePositives.slice(0, 10),
+      falseNegatives: falseNegatives.slice(0, 10),
+      patterns: {
+        commonFPDomains: [...new Set(falsePositives.map(fp => fp.domain))].slice(0, 5),
+        commonFNDomains: [...new Set(falseNegatives.map(fn => fn.domain))].slice(0, 5),
+        fpContentTypes: [...new Set(falsePositives.map(fp => fp.content_type))],
+        fnContentTypes: [...new Set(falseNegatives.map(fn => fn.content_type))]
+      },
+      recommendations: this.generateErrorRecommendations(falsePositives, falseNegatives)
+    };
+  }
+
+  // Helper methods
+  calculateTrend(values) {
+    if (values.length < 2) return 0;
+    const n = values.length;
+    const sumX = values.reduce((sum, _, i) => sum + i, 0);
+    const sumY = values.reduce((sum, val) => sum + val, 0);
+    const sumXY = values.reduce((sum, val, i) => sum + i * val, 0);
+    const sumXX = values.reduce((sum, _, i) => sum + i * i, 0);
+    
+    const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+    return Math.round(slope * 1000) / 1000; // Round to 3 decimal places
+  }
+
+  generateCacheRecommendations(hitRate, stats) {
+    const recommendations = [];
+    if (hitRate < 30) {
+      recommendations.push("Consider increasing cache duration to improve hit rate");
+    }
+    if (hitRate > 80) {
+      recommendations.push("Excellent cache performance! Consider expanding cache scope");
+    }
+    return recommendations;
+  }
+
+  generateErrorRecommendations(falsePositives, falseNegatives) {
+    const recommendations = [];
+    if (falsePositives.length > 0) {
+      recommendations.push(`Review AI detection for ${falsePositives[0].domain} domain`);
+    }
+    if (falseNegatives.length > 0) {
+      recommendations.push(`Improve sensitivity for ${falseNegatives[0].content_type} content`);
+    }
+    return recommendations;
+  }
 }
 
 module.exports = AnalyticsProcessor; 

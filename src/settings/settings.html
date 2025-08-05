@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InposterAI Settings</title>
+    <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+    <div class="settings-container">
+        <header class="settings-header">
+            <div class="header-content">
+                <h1>🤖 InposterAI Settings</h1>
+                <p>Configure your AI content detection preferences</p>
+            </div>
+        </header>
+
+        <main class="settings-main">
+            <!-- AI Model Configuration -->
+            <section class="settings-section">
+                <h2>🎯 AI Model Configuration</h2>
+                <div class="model-tabs">
+                    <button class="tab-button active" data-tab="local">🏠 Local Models (Ollama)</button>
+                    <button class="tab-button" data-tab="cloud">☁️ Cloud Models (Google AI)</button>
+                </div>
+
+                <!-- Local Models Tab -->
+                <div class="tab-content active" id="local-tab">
+                    <div class="setting-group">
+                        <label for="ollama-url">Ollama Server URL:</label>
+                        <input type="text" id="ollama-url" value="http://localhost:11434" placeholder="http://localhost:11434">
+                        <button id="test-ollama" class="btn-secondary">Test Connection</button>
+                        <div id="ollama-status" class="status-indicator"></div>
+                    </div>
+
+                    <div class="setting-group">
+                        <label for="ollama-model">Available Models:</label>
+                        <select id="ollama-model">
+                            <option value="">Loading models...</option>
+                        </select>
+                        <button id="refresh-models" class="btn-secondary">Refresh</button>
+                    </div>
+
+                    <div class="setting-group">
+                        <label>Model Information:</label>
+                        <div id="model-info" class="info-display">
+                            <span class="placeholder">Select a model to view details</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Cloud Models Tab -->
+                <div class="tab-content" id="cloud-tab">
+                    <div class="setting-group">
+                        <label for="google-api-key">Google AI API Key:</label>
+                        <div class="api-key-input">
+                            <input type="password" id="google-api-key" placeholder="Enter your Google AI API key">
+                            <button id="toggle-api-key" class="btn-icon">👁️</button>
+                        </div>
+                        <small class="help-text">
+                            Get your API key from <a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio</a>
+                        </small>
+                    </div>
+
+                    <div class="setting-group">
+                        <label for="google-model">Google AI Model:</label>
+                        <select id="google-model">
+                            <option value="gemini-pro">Gemini Pro</option>
+                            <option value="gemini-pro-vision">Gemini Pro Vision</option>
+                            <option value="gemini-flash">Gemini Flash</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-group">
+                        <button id="test-google" class="btn-secondary">Test Google AI Connection</button>
+                        <div id="google-status" class="status-indicator"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Analysis Preferences -->
+            <section class="settings-section">
+                <h2>⚙️ Analysis Preferences</h2>
+                
+                <div class="setting-group">
+                    <label for="analysis-method">Analysis Method:</label>
+                    <select id="analysis-method">
+                        <option value="ensemble">Ensemble (LLM + Statistical)</option>
+                        <option value="llm-only">LLM Only</option>
+                        <option value="statistical-only">Statistical Only</option>
+                    </select>
+                    <small class="help-text">Ensemble combines multiple methods for best accuracy</small>
+                </div>
+
+                <div class="setting-group">
+                    <label for="confidence-threshold">Confidence Threshold:</label>
+                    <input type="range" id="confidence-threshold" min="0" max="100" value="70" class="slider">
+                    <span id="confidence-value">70%</span>
+                    <small class="help-text">Minimum confidence required for analysis results</small>
+                </div>
+
+                <div class="setting-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="cache-enabled" checked>
+                        <span class="checkbox-custom"></span>
+                        Enable Analysis Caching
+                    </label>
+                    <small class="help-text">Cache results to improve performance for repeated analysis</small>
+                </div>
+
+                <div class="setting-group">
+                    <label for="cache-duration">Cache Duration (hours):</label>
+                    <input type="number" id="cache-duration" min="1" max="168" value="24">
+                    <small class="help-text">How long to keep cached analysis results</small>
+                </div>
+            </section>
+
+            <!-- Feedback Settings -->
+            <section class="settings-section">
+                <h2>💬 Feedback & Privacy</h2>
+                
+                <div class="setting-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="feedback-enabled" checked>
+                        <span class="checkbox-custom"></span>
+                        Enable Feedback Collection
+                    </label>
+                    <small class="help-text">Help improve accuracy by providing feedback on analysis results</small>
+                </div>
+
+                <div class="setting-group">
+                    <label for="user-expertise">Your Expertise Level:</label>
+                    <select id="user-expertise">
+                        <option value="beginner">Beginner</option>
+                        <option value="intermediate">Intermediate</option>
+                        <option value="expert">Expert</option>
+                    </select>
+                    <small class="help-text">Helps calibrate the weight of your feedback</small>
+                </div>
+
+                <div class="setting-group">
+                    <label for="anonymization-level">Data Anonymization:</label>
+                    <select id="anonymization-level">
+                        <option value="high">High (Hash all identifiers)</option>
+                        <option value="medium" selected>Medium (Hash domains only)</option>
+                        <option value="low">Low (Keep full context)</option>
+                    </select>
+                    <small class="help-text">Level of privacy protection for collected data</small>
+                </div>
+
+                <div class="setting-group">
+                    <label for="data-retention">Data Retention (days):</label>
+                    <input type="number" id="data-retention" min="1" max="365" value="90">
+                    <small class="help-text">How long to keep feedback and analysis data</small>
+                </div>
+            </section>
+
+            <!-- Dashboard & Analytics -->
+            <section class="settings-section">
+                <h2>📊 Analytics Dashboard</h2>
+                
+                <div class="setting-group">
+                    <label for="dashboard-url">Dashboard URL:</label>
+                    <input type="text" id="dashboard-url" value="http://localhost:3000" placeholder="http://localhost:3000">
+                    <button id="test-dashboard" class="btn-secondary">Test Connection</button>
+                    <div id="dashboard-status" class="status-indicator"></div>
+                </div>
+
+                <div class="setting-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="realtime-updates" checked>
+                        <span class="checkbox-custom"></span>
+                        Real-time Dashboard Updates
+                    </label>
+                    <small class="help-text">Send analysis data to dashboard in real-time</small>
+                </div>
+
+                <div class="dashboard-actions">
+                    <button id="open-dashboard" class="btn-primary">📊 Open Analytics Dashboard</button>
+                    <button id="export-data" class="btn-secondary">📁 Export Data</button>
+                    <button id="clear-data" class="btn-danger">🗑️ Clear All Data</button>
+                </div>
+            </section>
+
+            <!-- Advanced Settings -->
+            <section class="settings-section">
+                <h2>🔧 Advanced Settings</h2>
+                
+                <div class="setting-group">
+                    <label for="max-text-length">Maximum Text Length (characters):</label>
+                    <input type="number" id="max-text-length" min="100" max="10000" value="2000">
+                    <small class="help-text">Longer texts will be truncated for analysis</small>
+                </div>
+
+                <div class="setting-group">
+                    <label for="analysis-timeout">Analysis Timeout (seconds):</label>
+                    <input type="number" id="analysis-timeout" min="5" max="60" value="30">
+                    <small class="help-text">Maximum time to wait for analysis completion</small>
+                </div>
+
+                <div class="setting-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="debug-mode">
+                        <span class="checkbox-custom"></span>
+                        Enable Debug Mode
+                    </label>
+                    <small class="help-text">Show detailed logging in browser console</small>
+                </div>
+            </section>
+        </main>
+
+        <footer class="settings-footer">
+            <div class="footer-actions">
+                <button id="reset-settings" class="btn-secondary">Reset to Defaults</button>
+                <button id="save-settings" class="btn-primary">Save Settings</button>
+            </div>
+            <div class="footer-info">
+                <p>InposterAI v1.0.0 | <a href="#" id="view-license">License</a> | <a href="#" id="view-privacy">Privacy Policy</a></p>
+            </div>
+        </footer>
+    </div>
+
+    <script src="settings.js"></script>
+</body>
+</html> 
