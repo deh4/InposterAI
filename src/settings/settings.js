@@ -52,13 +52,11 @@ class SettingsManager {
     
     this.testConnections();
     
-    // Auto-load models if we have credentials and a selected model
-    // This ensures saved model selections are properly restored
-    if (this.currentSettings.selectedModel || this.currentSettings.googleApiKey) {
-      setTimeout(() => {
-        this.refreshAllModels();
-      }, 100);
-    }
+    // Auto-load models to ensure dropdown is populated
+    // This ensures saved model selections are properly restored and dropdown shows options
+    setTimeout(() => {
+      this.refreshAllModels();
+    }, 100);
   }
 
   // Settings Management
@@ -792,6 +790,19 @@ class SettingsManager {
         } catch (error) {
           console.log('Google models not available:', error.message);
         }
+      }
+      
+      // If no models were found from APIs, add default fallback options
+      if (allModels.length === 0) {
+        console.log('No models found from APIs, using default fallback options');
+        allModels.push(
+          { value: 'ollama:gemma3n:e4b', name: 'gemma3n:e4b', source: 'ollama' },
+          { value: 'ollama:llama3.2:latest', name: 'llama3.2:latest', source: 'ollama' },
+          { value: 'ollama:phi4:latest', name: 'phi4:latest', source: 'ollama' },
+          { value: 'google:gemini-pro', name: 'gemini-pro', source: 'google' },
+          { value: 'google:gemini-pro-vision', name: 'gemini-pro-vision', source: 'google' },
+          { value: 'google:gemini-flash', name: 'gemini-flash', source: 'google' }
+        );
       }
       
       // Populate unified dropdown
