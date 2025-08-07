@@ -484,11 +484,13 @@ function initializeContentAnalyzer() {
       // Hide existing tooltip first
       this.hideSelectionTooltip();
       
-      // Get selection position
-      const range = selection.getRangeAt(0);
-      const rect = range.getBoundingClientRect();
+      // Validate selection before proceeding
+      if (!selection || selection.rangeCount === 0) {
+        console.log('Invalid selection, skipping tooltip');
+        return;
+      }
       
-      // Create tooltip element
+      // Create tooltip element first (so we can measure it)
       this.selectionTooltip = document.createElement('div');
       this.selectionTooltip.className = 'ai-detector-selection-tooltip';
       this.selectionTooltip.innerHTML = `
@@ -506,35 +508,57 @@ function initializeContentAnalyzer() {
         </div>
       `;
       
-      // Position tooltip below the end of the selection
+      // Temporarily add to DOM (invisible) to measure actual dimensions
+      this.selectionTooltip.style.position = 'absolute';
+      this.selectionTooltip.style.visibility = 'hidden';
+      this.selectionTooltip.style.top = '-9999px';
+      document.body.appendChild(this.selectionTooltip);
+      
+      // Get actual tooltip dimensions
+      const tooltipWidth = this.selectionTooltip.offsetWidth;
+      const tooltipHeight = this.selectionTooltip.offsetHeight;
+      
+      // Get fresh selection position (after DOM changes)
+      const range = selection.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      
+      // Calculate viewport and scroll information
       const scrollY = window.scrollY || window.pageYOffset;
       const scrollX = window.scrollX || window.pageXOffset;
       const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
       
-      // Position tooltip right after the last selected character
-      let tooltipTop = rect.bottom + scrollY + 12; // Small gap below selection
-      let tooltipLeft = rect.right + scrollX + 8; // Start right after the last character with small gap
+      // Position tooltip at the end of the selection with small gap
+      let tooltipTop = rect.bottom + scrollY + 8; // 8px gap below selection
+      let tooltipLeft = rect.right + scrollX + 8;  // 8px gap after last character
       
-      // No horizontal centering - we want it to start right after the selection
-      this.selectionTooltip.style.transform = 'translateY(0)';
-      
-      // Adjust horizontal position if tooltip would go off-screen
-      const tooltipWidth = 200; // Approximate tooltip width
+      // Horizontal overflow handling (simplified)
       if (tooltipLeft + tooltipWidth > viewportWidth - 20) {
-        // If tooltip would overflow right edge, position it to the left of selection
+        // Move to left side of selection if overflowing right
         tooltipLeft = rect.left + scrollX - tooltipWidth - 8;
         
-        // If that would overflow left edge, center it over the selection
+        // If still overflowing left, center it
         if (tooltipLeft < 20) {
-          tooltipLeft = rect.left + scrollX + (rect.width / 2);
-          this.selectionTooltip.style.transform = 'translateX(-50%) translateY(0)';
+          tooltipLeft = Math.max(20, rect.left + scrollX + (rect.width - tooltipWidth) / 2);
         }
       }
       
-      this.selectionTooltip.style.position = 'absolute';
+      // Vertical overflow handling
+      if (tooltipTop + tooltipHeight > viewportHeight + scrollY - 20) {
+        // Position above selection if overflowing bottom
+        tooltipTop = rect.top + scrollY - tooltipHeight - 8;
+      }
+      
+      // Ensure minimum distance from edges
+      tooltipLeft = Math.max(10, Math.min(tooltipLeft, viewportWidth - tooltipWidth - 10));
+      tooltipTop = Math.max(scrollY + 10, tooltipTop);
+      
+      // Apply final position
       this.selectionTooltip.style.left = `${tooltipLeft}px`;
       this.selectionTooltip.style.top = `${tooltipTop}px`;
       this.selectionTooltip.style.zIndex = '10000';
+      this.selectionTooltip.style.visibility = 'visible';
+      this.selectionTooltip.style.transform = 'none';
       
       // Add event listener for analyze button
       const analyzeBtn = this.selectionTooltip.querySelector('.analyze-btn');
@@ -547,10 +571,7 @@ function initializeContentAnalyzer() {
         this.performSelectionAnalysis(selectedText);
       });
       
-      // Add to page
-      document.body.appendChild(this.selectionTooltip);
-      
-      // Add fade-in animation
+      // Tooltip already added to DOM for measurement, just add fade-in animation
       requestAnimationFrame(() => {
         this.selectionTooltip.classList.add('show');
       });
