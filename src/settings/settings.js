@@ -51,8 +51,14 @@ class SettingsManager {
     }, 50);
     
     this.testConnections();
-    // Don't auto-refresh models on init to avoid blocking UI
-    // Models will be loaded when refresh button is clicked or API key is entered
+    
+    // Auto-load models if we have credentials and a selected model
+    // This ensures saved model selections are properly restored
+    if (this.currentSettings.selectedModel || this.currentSettings.googleApiKey) {
+      setTimeout(() => {
+        this.refreshAllModels();
+      }, 100);
+    }
   }
 
   // Settings Management
@@ -865,6 +871,21 @@ class SettingsManager {
         googleGroup.appendChild(option);
       });
       select.appendChild(googleGroup);
+    }
+    
+    // Restore the previously selected model if it exists in the new list
+    if (this.currentSettings.selectedModel) {
+      const savedValue = this.currentSettings.selectedModel;
+      select.value = savedValue;
+      
+      // If the saved value doesn't exist in the new list, log a warning
+      if (select.value !== savedValue) {
+        console.warn(`Previously selected model "${savedValue}" not found in current model list`);
+        // Keep the setting but reset the dropdown to default
+        select.value = '';
+      } else {
+        console.log(`✅ Restored selected model: ${savedValue}`);
+      }
     }
     
     console.log(`Populated ${models.length} total models (${ollamaModels.length} Ollama, ${googleModels.length} Google)`);
