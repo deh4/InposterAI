@@ -2,11 +2,15 @@
  * Google Gemini API Client for AI Content Detection
  * Handles API key validation, model retrieval, and text analysis
  */
+
+import StatisticalAnalyzer from './statistical-analyzer.js';
+
 class GoogleClient {
   constructor() {
     this.apiKey = null;
     this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
     this.availableModels = [];
+    this.statisticalAnalyzer = new StatisticalAnalyzer();
   }
 
   /**
@@ -88,6 +92,8 @@ class GoogleClient {
       throw new Error('No text provided for analysis');
     }
 
+    const analysisStartTime = Date.now();
+    
     try {
       let prompt = `You are an expert AI content detector. Analyze the following text to determine if it was written by AI or a human.
 
@@ -166,8 +172,38 @@ Respond with ONLY a JSON object in this exact format:
       console.log('==================');
 
       // Parse the JSON response
-      const result = this.parseGoogleResponse(responseText);
-      return result;
+      const llmResult = this.parseGoogleResponse(responseText);
+      
+      // Add statistical analysis to match Ollama client format
+      const statisticalStartTime = Date.now();
+      const statisticalStats = this.statisticalAnalyzer.analyze(text);
+      const statisticalTime = Date.now() - statisticalStartTime;
+      
+      // Create ensemble result combining Google LLM + statistical analysis
+      const ensembleResult = this.statisticalAnalyzer.calculateEnsembleScore(
+        statisticalStats, 
+        llmResult
+      );
+      
+      const totalTime = Date.now() - analysisStartTime;
+      const llmTime = totalTime - statisticalTime;
+      
+      // Return format matching Ollama client
+      return {
+        likelihood: ensembleResult.likelihood,
+        confidence: ensembleResult.confidence,
+        reasoning: llmResult.reasoning,
+        rawResponse: responseText,
+        statisticalBreakdown: ensembleResult.breakdown,
+        llmAnalysis: llmResult,
+        method: 'ensemble',
+        analysisTime: totalTime,
+        llmResponseTime: llmTime,
+        statisticalTime: statisticalTime,
+        modelName: modelName,
+        timestamp: Date.now(),
+        source: 'google'
+      };
 
     } catch (error) {
       console.error('Google API analysis failed:', error);
