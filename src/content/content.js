@@ -713,16 +713,20 @@ function initializeContentAnalyzer() {
       
       if (thumbsUpBtn) {
         thumbsUpBtn.addEventListener('click', () => {
-          console.log('Thumbs up clicked');
+          console.log('🐛 DEBUG: Thumbs up button clicked by user');
           this.handleQuickFeedback('thumbs_up', analysisData, resultsState);
         });
+      } else {
+        console.log('🐛 DEBUG: Thumbs up button not found');
       }
       
       if (thumbsDownBtn) {
         thumbsDownBtn.addEventListener('click', () => {
-          console.log('Thumbs down clicked');
+          console.log('🐛 DEBUG: Thumbs down button clicked by user');
           this.handleQuickFeedback('thumbs_down', analysisData, resultsState);
         });
+      } else {
+        console.log('🐛 DEBUG: Thumbs down button not found');
       }
 
       const closeModalBtn = resultsState.querySelector('.close-modal-btn');
@@ -1418,6 +1422,9 @@ function initializeContentAnalyzer() {
     }
 
     showFeedbackStatus(widget, type) {
+      console.log('🐛 DEBUG: showFeedbackStatus called with type:', type);
+      console.trace('🐛 DEBUG: Call stack for showFeedbackStatus');
+      
       const rating = widget.querySelector('.feedback-rating');
       const details = widget.querySelector('.feedback-details');
       const status = widget.querySelector('.feedback-status');
