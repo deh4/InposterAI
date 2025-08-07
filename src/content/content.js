@@ -26,6 +26,7 @@ function initializeContentAnalyzer() {
       this.lastAnalyzedContent = null;
       this.selectionTooltip = null;
       this.selectionTimeout = null;
+      this.lastMousePosition = { x: 0, y: 0 }; // Track mouse position for tooltip
       this.setupMessageListener();
       this.setupPageObserver();
       this.setupSelectionHandler();
@@ -439,6 +440,15 @@ function initializeContentAnalyzer() {
         clearTimeout(this.selectionTimeout);
       }
       
+      // Capture mouse position if this is a mouse event
+      if (event && event.clientX !== undefined && event.clientY !== undefined) {
+        this.lastMousePosition = {
+          x: event.clientX,
+          y: event.clientY
+        };
+        console.log('Mouse position captured:', this.lastMousePosition);
+      }
+      
       // Add longer delay to let browser UI settle first
       this.selectionTimeout = setTimeout(() => {
         this.checkAndShowTooltip();
@@ -518,35 +528,54 @@ function initializeContentAnalyzer() {
       const tooltipWidth = this.selectionTooltip.offsetWidth;
       const tooltipHeight = this.selectionTooltip.offsetHeight;
       
-      // Get fresh selection position (after DOM changes)
-      const range = selection.getRangeAt(0);
-      const rect = range.getBoundingClientRect();
-      
       // Calculate viewport and scroll information
       const scrollY = window.scrollY || window.pageYOffset;
       const scrollX = window.scrollX || window.pageXOffset;
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
       
-      // Position tooltip at the end of the selection with small gap
-      let tooltipTop = rect.bottom + scrollY + 8; // 8px gap below selection
-      let tooltipLeft = rect.right + scrollX + 8;  // 8px gap after last character
+      // Use captured mouse position instead of selection bounds
+      let tooltipTop, tooltipLeft;
+      
+      if (this.lastMousePosition.x > 0 && this.lastMousePosition.y > 0) {
+        // Use mouse position if available
+        tooltipTop = this.lastMousePosition.y + scrollY + 12; // 12px gap below mouse
+        tooltipLeft = this.lastMousePosition.x + scrollX + 8;  // 8px gap to the right of mouse
+        console.log('Using mouse position for tooltip:', this.lastMousePosition);
+      } else {
+        // Fallback to selection bounds for keyboard selections
+        const range = selection.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+        tooltipTop = rect.bottom + scrollY + 8;
+        tooltipLeft = rect.right + scrollX + 8;
+        console.log('Using selection bounds for tooltip (no mouse position)');
+      }
       
       // Horizontal overflow handling (simplified)
       if (tooltipLeft + tooltipWidth > viewportWidth - 20) {
-        // Move to left side of selection if overflowing right
-        tooltipLeft = rect.left + scrollX - tooltipWidth - 8;
+        if (this.lastMousePosition.x > 0) {
+          // Move to left side of mouse if overflowing right
+          tooltipLeft = this.lastMousePosition.x + scrollX - tooltipWidth - 8;
+        } else {
+          // Fallback to viewport edge
+          tooltipLeft = viewportWidth - tooltipWidth - 20;
+        }
         
-        // If still overflowing left, center it
+        // If still overflowing left, position it with minimum margin
         if (tooltipLeft < 20) {
-          tooltipLeft = Math.max(20, rect.left + scrollX + (rect.width - tooltipWidth) / 2);
+          tooltipLeft = 20;
         }
       }
       
       // Vertical overflow handling
       if (tooltipTop + tooltipHeight > viewportHeight + scrollY - 20) {
-        // Position above selection if overflowing bottom
-        tooltipTop = rect.top + scrollY - tooltipHeight - 8;
+        if (this.lastMousePosition.y > 0) {
+          // Position above mouse if overflowing bottom
+          tooltipTop = this.lastMousePosition.y + scrollY - tooltipHeight - 8;
+        } else {
+          // Fallback to viewport top
+          tooltipTop = scrollY + 20;
+        }
       }
       
       // Ensure minimum distance from edges
