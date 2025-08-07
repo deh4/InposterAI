@@ -755,37 +755,37 @@ function initializeContentAnalyzer() {
       this.enableOutsideClickClose();
 
       // Add event listeners for the new feedback UI (with a small delay to ensure DOM is ready)
-      setTimeout(() => {
+      setTimeout(async () => {
+        // Initialize feedback record FIRST before setting up buttons
+        await this.initializeFeedbackRecord(analysisData);
+        
         const thumbsUpBtn = resultsState.querySelector('.feedback-thumbs-up');
         const thumbsDownBtn = resultsState.querySelector('.feedback-thumbs-down');
       
-      console.log('Setting up feedback buttons:', { thumbsUpBtn, thumbsDownBtn });
+        console.log('Setting up feedback buttons:', { thumbsUpBtn, thumbsDownBtn });
       
-      if (thumbsUpBtn) {
-        thumbsUpBtn.addEventListener('click', () => {
-          console.log('🐛 DEBUG: Thumbs up button clicked by user');
-          this.handleQuickFeedback('thumbs_up', analysisData, resultsState);
-        });
-      } else {
-        console.log('🐛 DEBUG: Thumbs up button not found');
-      }
+        if (thumbsUpBtn) {
+          thumbsUpBtn.addEventListener('click', () => {
+            console.log('🐛 DEBUG: Thumbs up button clicked by user');
+            this.handleQuickFeedback('thumbs_up', analysisData, resultsState);
+          });
+        } else {
+          console.log('🐛 DEBUG: Thumbs up button not found');
+        }
       
-      if (thumbsDownBtn) {
-        thumbsDownBtn.addEventListener('click', () => {
-          console.log('🐛 DEBUG: Thumbs down button clicked by user');
-          this.handleQuickFeedback('thumbs_down', analysisData, resultsState);
+        if (thumbsDownBtn) {
+          thumbsDownBtn.addEventListener('click', () => {
+            console.log('🐛 DEBUG: Thumbs down button clicked by user');
+            this.handleQuickFeedback('thumbs_down', analysisData, resultsState);
+          });
+        } else {
+          console.log('🐛 DEBUG: Thumbs down button not found');
+        }
+
+        const closeModalBtn = resultsState.querySelector('.close-modal-btn');
+        closeModalBtn.addEventListener('click', () => {
+          this.hideAnalysisModal();
         });
-      } else {
-        console.log('🐛 DEBUG: Thumbs down button not found');
-      }
-
-      const closeModalBtn = resultsState.querySelector('.close-modal-btn');
-      closeModalBtn.addEventListener('click', () => {
-        this.hideAnalysisModal();
-      });
-
-        // Initialize feedback record for this analysis
-        this.initializeFeedbackRecord(analysisData);
       }, 100); // 100ms delay to ensure DOM is ready
     }
 
@@ -875,25 +875,52 @@ function initializeContentAnalyzer() {
       const feedbackStatus = container.querySelector('.feedback-status');
       const feedbackRating = container.querySelector('.feedback-rating');
       
-      // Hide rating buttons, show success message
-      feedbackRating.style.display = 'none';
-      feedbackStatus.classList.remove('hidden');
-      
-      // Submit feedback data
-      const feedbackData = {
-        rating: rating,
-        confidence: 'high',
-        reasons: [],
-        correction: null
-      };
-      
-      await this.submitFeedback(feedbackData, analysisData);
-      
-      // Auto-hide success message after 2 seconds
-      setTimeout(() => {
-        feedbackStatus.classList.add('hidden');
+      try {
+        // Submit feedback data first
+        const feedbackData = {
+          rating: rating,
+          confidence: 'high',
+          reasons: [],
+          correction: null
+        };
+        
+        await this.submitFeedback(feedbackData, analysisData);
+        
+        // Only show success message AFTER successful submission
+        feedbackRating.style.display = 'none';
+        feedbackStatus.classList.remove('hidden');
+        
+        // Auto-hide success message after 2 seconds
+        setTimeout(() => {
+          feedbackStatus.classList.add('hidden');
+          feedbackRating.style.display = 'flex';
+        }, 2000);
+        
+      } catch (error) {
+        console.error('Failed to submit feedback:', error);
+        // Don't show success message if submission failed
+        // Reset buttons to allow retry
         feedbackRating.style.display = 'flex';
-      }, 2000);
+        
+        // Optionally show error message
+        const errorMsg = container.querySelector('.feedback-error') || document.createElement('div');
+        errorMsg.className = 'feedback-error';
+        errorMsg.textContent = 'Failed to submit feedback. Please try again.';
+        errorMsg.style.color = '#ef4444';
+        errorMsg.style.fontSize = '12px';
+        errorMsg.style.marginTop = '8px';
+        
+        if (!container.querySelector('.feedback-error')) {
+          container.appendChild(errorMsg);
+        }
+        
+        // Auto-hide error after 3 seconds
+        setTimeout(() => {
+          if (errorMsg.parentNode) {
+            errorMsg.remove();
+          }
+        }, 3000);
+      }
     }
 
     showDetailedFeedback(analysisData, container) {
@@ -1463,11 +1490,13 @@ function initializeContentAnalyzer() {
           throw new Error('No feedback record found - analysis may not have completed properly');
         }
         
+        console.log('Submitting feedback for record:', this.currentFeedbackRecordId);
         await this.feedbackManager.submitFeedback(this.currentFeedbackRecordId, feedbackData);
         
         console.log('Detailed feedback submitted successfully:', feedbackData);
       } catch (error) {
         console.error('Failed to submit feedback:', error);
+        throw error; // Re-throw to ensure proper error handling in calling methods
       }
     }
 
