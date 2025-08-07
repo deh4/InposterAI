@@ -29,35 +29,9 @@ export class TextFormatter {
    * Split reasoning into logical sections
    */
   static splitIntoSections(text) {
-    // Split on common section separators
-    const separators = [
-      /\.\s+Statistical indicators:/gi,
-      /\.\s+LLM Analysis:/gi,
-      /\.\s+High confidence:/gi,
-      /\.\s+Moderate confidence:/gi,
-      /\.\s+Low confidence:/gi,
-      /\.\s+(?=Statistical indicators|LLM Analysis|High confidence|Moderate confidence|Low confidence)/gi
-    ];
-
-    let sections = [text];
-    
-    for (const separator of separators) {
-      const newSections = [];
-      for (const section of sections) {
-        const parts = section.split(separator);
-        if (parts.length > 1) {
-          newSections.push(parts[0]);
-          for (let i = 1; i < parts.length; i++) {
-            newSections.push(parts[i]);
-          }
-        } else {
-          newSections.push(section);
-        }
-      }
-      sections = newSections;
-    }
-
-    return sections.filter(s => s.trim().length > 0);
+    // Split before each section header, keeping the header
+    const separator = /(?=Statistical indicators:|LLM Analysis:|High confidence:|Moderate confidence:|Low confidence:)/gi;
+    return text.split(separator).map(s => s.trim()).filter(s => s.length > 0);
   }
 
   /**
@@ -67,30 +41,17 @@ export class TextFormatter {
     return sections.map((section) => {
       const trimmed = section.trim();
       
-      // Detect section type
       if (trimmed.toLowerCase().startsWith('llm analysis:')) {
         const content = trimmed.replace(/^llm analysis:\s*/i, '');
-        return `<div class="reasoning-section">
-          <h4 class="reasoning-header">🤖 AI Analysis</h4>
-          <p class="reasoning-content">${this.formatSentences(content)}</p>
-        </div>`;
-      } else if (trimmed.toLowerCase().includes('statistical indicators:')) {
-        const content = trimmed.replace(/^.*statistical indicators:\s*/i, '');
-        return `<div class="reasoning-section">
-          <h4 class="reasoning-header">📊 Statistical Indicators</h4>
-          <p class="reasoning-content">${this.formatIndicators(content)}</p>
-        </div>`;
-      } else if (trimmed.toLowerCase().includes('confidence:')) {
-        const content = trimmed.replace(/^.*confidence:\s*/i, '');
-        return `<div class="reasoning-section">
-          <h4 class="reasoning-header">🎯 Confidence</h4>
-          <p class="reasoning-content">${this.formatSentences(content)}</p>
-        </div>`;
+        return `<div class="reasoning-section"><h4 class="reasoning-header">🤖 AI Analysis</h4><p class="reasoning-content">${this.formatSentences(content)}</p></div>`;
+      } else if (trimmed.toLowerCase().startsWith('statistical indicators:')) {
+        const content = trimmed.replace(/^statistical indicators:\s*/i, '');
+        return `<div class="reasoning-section"><h4 class="reasoning-header">📊 Statistical Indicators</h4><p class="reasoning-content">${this.formatIndicators(content)}</p></div>`;
+      } else if (trimmed.toLowerCase().startsWith('confidence:')) {
+        const content = trimmed.replace(/^confidence:\s*/i, '');
+        return `<div class="reasoning-section"><h4 class="reasoning-header">🎯 Confidence</h4><p class="reasoning-content">${this.formatSentences(content)}</p></div>`;
       } else {
-        // Default section
-        return `<div class="reasoning-section">
-          <p class="reasoning-content">${this.formatSentences(trimmed)}</p>
-        </div>`;
+        return `<div class="reasoning-section"><p class="reasoning-content">${this.formatSentences(trimmed)}</p></div>`;
       }
     }).join('');
   }
@@ -100,26 +61,30 @@ export class TextFormatter {
    */
   static formatSingleSection(text) {
     const formatted = this.formatSentences(text);
-    return `<div class="reasoning-section">
-      <p class="reasoning-content">${formatted}</p>
-    </div>`;
+    return `<div class="reasoning-section"><p class="reasoning-content">${formatted}</p></div>`;
   }
 
   /**
    * Format sentences with better punctuation and structure
    */
   static formatSentences(text) {
-    return text
-      // Add periods if missing at sentence ends
-      .replace(/([a-z])\s+([A-Z])/g, '$1. $2')
-      // Fix spacing around punctuation
-      .replace(/\s+([.,!?])/g, '$1')
-      .replace(/([.,!?])([A-Z])/g, '$1 $2')
-      // Capitalize first letter
-      .replace(/^[a-z]/, letter => letter.toUpperCase())
-      // Clean up multiple spaces
-      .replace(/\s+/g, ' ')
-      .trim();
+    // Trim whitespace first to ensure correct capitalization
+    let formatted = text.trim();
+
+    // Capitalize first letter
+    formatted = formatted.replace(/^[a-z]/, letter => letter.toUpperCase());
+
+    // Add periods if missing at sentence ends
+    formatted = formatted.replace(/([a-z])\s+([A-Z])/g, '$1. $2');
+
+    // Fix spacing around punctuation
+    formatted = formatted.replace(/\s+([.,!?])/g, '$1');
+    formatted = formatted.replace(/([.,!?])(\w)/g, '$1 $2');
+
+    // Clean up multiple spaces
+    formatted = formatted.replace(/\s+/g, ' ');
+
+    return formatted;
   }
 
   /**
