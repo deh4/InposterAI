@@ -117,6 +117,31 @@
   display: none;
 }
 
+/* Ensure all modal text has proper color */
+.analysis-modal-content * {
+  color: inherit;
+}
+
+.modal-body {
+  color: #374151 !important;
+}
+
+.modal-body h4 {
+  color: #374151 !important;
+}
+
+.modal-body p, .modal-body div, .modal-body span {
+  color: inherit !important;
+}
+
+.score-value {
+  color: #1f2937 !important;
+}
+
+.score-label {
+  color: #6b7280 !important;
+}
+
 /* Progress State */
 .progress-state {
   text-align: center;
@@ -222,7 +247,7 @@
   margin-bottom: 20px;
   font-size: 15px;
   line-height: 1.6;
-  color: #374151;
+  color: #374151 !important;
   font-style: italic;
 }
 
@@ -299,7 +324,7 @@
   justify-content: space-between;
   align-items: center;
   font-size: 12px;
-  color: #6b7280;
+  color: #6b7280 !important;
   margin-top: 8px;
 }
 
@@ -327,13 +352,13 @@
   display: block;
   font-size: 16px;
   font-weight: 600;
-  color: #374151;
+  color: #374151 !important;
   margin-bottom: 4px;
 }
 
 .feedback-subtitle {
   font-size: 14px;
-  color: #6b7280;
+  color: #6b7280 !important;
 }
 
 .feedback-rating {
